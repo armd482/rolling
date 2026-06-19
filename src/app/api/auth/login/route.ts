@@ -52,8 +52,16 @@ export async function POST(req: Request) {
     sid,
   });
 
+  // 이미 어떤 방에 입장 중이면 그 방으로 바로 들어가도록 roomId 반환
+  const { data: membership } = await supabase
+    .from('room_members')
+    .select('room_id')
+    .eq('user_id', row!.id)
+    .maybeSingle();
+
   const res = NextResponse.json({
     user: { id: row!.id, nickname: row!.nickname, name: row!.name, email: row!.email },
+    roomId: membership?.room_id ?? null,
   });
   res.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,

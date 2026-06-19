@@ -65,10 +65,13 @@ export default function RoomList({
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? '입장 실패');
+        setBusy(false);
         return;
       }
+      // 성공 시 리다이렉트되므로 busy를 유지(버튼 깜빡임 방지)
       router.push(`/rooms/${roomId}`);
-    } finally {
+    } catch {
+      setError('입장 실패');
       setBusy(false);
     }
   }
@@ -80,8 +83,8 @@ export default function RoomList({
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <header className="mb-8 flex items-center justify-between">
+    <main className="mx-auto w-full max-w-6xl px-6 py-8 sm:px-8 lg:px-10">
+      <header className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">방 선택</h1>
           <p className="text-sm text-gray-500">
@@ -95,11 +98,12 @@ export default function RoomList({
 
       {error && <p className="mb-4 text-sm text-red-500">{error}</p>}
 
-      <ul className="grid gap-4 sm:grid-cols-2">
+      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {overview.map((room) => {
           const full = room.members.length >= MAX;
           const mine = myRoomId === room.id;
           const inAnyRoom = myRoomId !== null;
+          const inProgress = room.state !== 'lobby';
           return (
             <li
               key={room.id}
@@ -144,10 +148,10 @@ export default function RoomList({
                 ) : (
                   <button
                     onClick={() => join(room.id)}
-                    disabled={busy || full || inAnyRoom}
+                    disabled={busy || full || inAnyRoom || inProgress}
                     className="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-gray-100 dark:text-gray-900"
                   >
-                    {full ? '가득 참' : '입장'}
+                    {inProgress ? '진행 중' : full ? '가득 참' : '입장'}
                   </button>
                 )}
               </div>
