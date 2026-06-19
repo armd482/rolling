@@ -38,6 +38,16 @@ export async function POST(req: Request) {
     );
   }
 
+  // 진행 중인 방은 입장 불가 (대기 중일 때만 허용)
+  const { data: room } = await supabase
+    .from('rooms')
+    .select('state')
+    .eq('id', id)
+    .maybeSingle();
+  if (room && room.state !== 'lobby') {
+    return NextResponse.json({ error: '이미 시작된 방입니다.' }, { status: 409 });
+  }
+
   // 정원 확인
   const { count } = await supabase
     .from('room_members')
