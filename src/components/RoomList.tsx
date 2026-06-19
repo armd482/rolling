@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import type { RoomState, RoomMode } from '@/types/db';
 
@@ -26,11 +27,13 @@ export default function RoomList({
   myUserId,
   myNickname,
   myRoomId,
+  isAdmin = false,
 }: {
   overview: RoomOverview[];
   myUserId: string;
   myNickname: string;
   myRoomId: number | null;
+  isAdmin?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -91,9 +94,19 @@ export default function RoomList({
             <span className="font-medium text-indigo-600">{myNickname}</span> 님, 입장할 방을 고르세요.
           </p>
         </div>
-        <button onClick={logout} className="text-sm text-gray-500 hover:text-gray-800">
-          로그아웃
-        </button>
+        <div className="flex items-center gap-4">
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="text-sm font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
+            >
+              관리자
+            </Link>
+          )}
+          <button onClick={logout} className="text-sm text-gray-500 hover:text-gray-800">
+            로그아웃
+          </button>
+        </div>
       </header>
 
       {error && <p className="mb-4 text-sm text-red-500">{error}</p>}

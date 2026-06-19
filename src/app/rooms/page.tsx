@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getValidSession } from '@/lib/session';
+import { getValidSession, isAdminEmail } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
 import type { RoomRow, RoomMemberRow, UserRow } from '@/types/db';
 import RoomList, { type RoomOverview } from '@/components/RoomList';
@@ -47,6 +47,7 @@ export default async function RoomsPage() {
       myUserId={session.id}
       myNickname={session.nickname}
       myRoomId={myRoomId}
+      isAdmin={isAdminEmail(session.email)}
     />
   );
 }
