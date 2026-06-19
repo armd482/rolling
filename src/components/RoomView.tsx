@@ -1,10 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 import type { RoomState, RoomMode } from '@/types/db';
+import type { GameData } from '@/types/game';
+import WritingView from '@/components/game/WritingView';
+import RevealView from '@/components/game/RevealView';
+import FinishedView from '@/components/game/FinishedView';
 
 export type Member = { userId: string; nickname: string; isHost: boolean };
 export type ChatMessage = {
@@ -38,16 +42,24 @@ export default function RoomView({
   roomId,
   state,
   mode,
+  currentTargetIdx,
+  revealPage,
+  phaseEndsAt,
   myUserId,
   myNickname,
   members,
+  game,
 }: {
   roomId: number;
   state: RoomState;
   mode: RoomMode;
+  currentTargetIdx: number;
+  revealPage: number;
+  phaseEndsAt: string | null;
   myUserId: string;
   myNickname: string;
   members: Member[];
+  game: GameData | null;
 }) {
   const router = useRouter();
   const [chats, setChats] = useState<ChatMessage[]>([]);
@@ -66,6 +78,7 @@ export default function RoomView({
   const me = members.find((m) => m.userId === myUserId);
   const iAmHost = me?.isHost ?? false;
   const myReady = readyMap[myUserId] ?? false;
+  const gameInProgress = state === 'writing' || state === 'revealing';
 
   // 시작 가능 조건: 총 3명 이상이고, 방장 외 참가자 전원이 준비 완료
   const others = members.filter((m) => !m.isHost);
@@ -113,6 +126,13 @@ export default function RoomView({
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
         () => router.refresh(),
+      )
+      // 게임 배정·메시지 변경 → 서버 컴포넌트 갱신 (작성 현황/공개 내용 실시간 반영)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments' }, () =>
+        router.refresh(),
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () =>
+        router.refresh(),
       )
       // 준비 상태 (Broadcast) — presence 재track 은 타 클라이언트 전파가 불안정해 broadcast 사용
       .on('broadcast', { event: 'ready' }, ({ payload }) => {
@@ -199,9 +219,77 @@ export default function RoomView({
   async function start() {
     if (!iAmHost || !allReady || starting) return;
     setStarting(true);
-    // TODO(Phase 3): 주제 배정 + 방 상태(writing) 전환 라우트 호출
-    // 현재는 시작 버튼/활성화 조건만 구현. 게임 시작 로직은 다음 단계에서 연결.
-    setStarting(false);
+    try {
+      const res = await fetch('/api/game/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        window.alert(d.error ?? '시작에 실패했습니다.');
+      }
+      // 성공 시 rooms UPDATE 구독 → router.refresh → 작성 화면으로 전환
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  // 작성 내용 저장
+  const writeMessage = useCallback(
+    (targetUserId: string, content: string) => {
+      fetch('/api/game/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId, targetUserId, content }),
+      });
+    },
+    [roomId],
+  );
+
+  // 작성 → 공개 전환 요청 (마감/전원완료 시). 서버가 조건 검증 후 1회만 적용.
+  const toRevealSentRef = useRef(false);
+  const requestToReveal = useCallback(() => {
+    if (toRevealSentRef.current) return;
+    toRevealSentRef.current = true;
+    fetch('/api/game/to-reveal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomId }),
+    });
+  }, [roomId]);
+
+  // 작성 단계가 아니면 전환요청 가드 초기화
+  useEffect(() => {
+    if (state !== 'writing') toRevealSentRef.current = false;
+  }, [state]);
+
+  // 전원 작성 완료 시 자동으로 공개 단계 전환 요청
+  useEffect(() => {
+    if (
+      state === 'writing' &&
+      game &&
+      game.progress.length > 0 &&
+      game.progress.every((p) => p.done)
+    ) {
+      requestToReveal();
+    }
+  }, [state, game, requestToReveal]);
+
+  function revealNav(dir: 'next' | 'prev') {
+    fetch('/api/game/reveal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomId, dir }),
+    });
+  }
+
+  function resetGame() {
+    fetch('/api/game/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomId }),
+    });
   }
 
   async function kick(targetUserId: string) {
@@ -246,21 +334,51 @@ export default function RoomView({
         </div>
         <button
           onClick={leave}
-          disabled={leaving}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"
+          disabled={leaving || gameInProgress}
+          title={gameInProgress ? '게임 진행 중에는 나갈 수 없습니다.' : undefined}
+          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"
         >
           방 나가기
         </button>
       </header>
 
+      {state === 'writing' && game ? (
+        <WritingView
+          targets={game.targets}
+          myMessages={game.myMessages}
+          myUserId={myUserId}
+          phaseEndsAt={phaseEndsAt}
+          progress={game.progress}
+          onWrite={writeMessage}
+          onTimeUp={requestToReveal}
+        />
+      ) : state === 'revealing' && game ? (
+        <RevealView
+          targets={game.targets}
+          messagesByAssignment={game.messagesByAssignment}
+          currentTargetIdx={currentTargetIdx}
+          revealPage={revealPage}
+          phaseEndsAt={phaseEndsAt}
+          iAmHost={iAmHost}
+          onNav={revealNav}
+        />
+      ) : state === 'finished' && game ? (
+        <FinishedView
+          targets={game.targets}
+          messagesByAssignment={game.messagesByAssignment}
+          iAmHost={iAmHost}
+          onReset={resetGame}
+        />
+      ) : (
+        <>
       {/* 참가자 */}
       <section className="mb-6 flex-1">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-xs font-medium uppercase tracking-wide text-gray-400">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <h2 className="pt-2 text-xs font-medium uppercase tracking-wide text-gray-400">
             참가자 {members.length}/5
           </h2>
           {iAmHost ? (
-            <div className="flex flex-col items-end gap-1">
+            <div className="flex flex-col items-end gap-1.5">
               <div className="flex items-center gap-3">
                 <span className="text-xs text-amber-600 dark:text-amber-400">
                   👑 당신이 방장입니다
@@ -268,7 +386,7 @@ export default function RoomView({
                 <button
                   onClick={start}
                   disabled={!allReady || starting}
-                  className={`rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition ${
+                  className={`whitespace-nowrap rounded-lg px-5 py-2 text-sm font-semibold leading-none shadow-sm transition ${
                     allReady && !starting
                       ? 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98]'
                       : 'cursor-not-allowed bg-gray-200 text-gray-400 shadow-none dark:bg-gray-800 dark:text-gray-500'
@@ -278,13 +396,13 @@ export default function RoomView({
                 </button>
               </div>
               {startDisabledReason && (
-                <p className="text-xs text-red-500">⚠ {startDisabledReason}</p>
+                <p className="text-right text-xs text-red-500">⚠ {startDisabledReason}</p>
               )}
             </div>
           ) : (
             <button
               onClick={toggleReady}
-              className={`rounded-lg px-5 py-2 text-sm font-semibold text-white shadow-sm transition ${
+              className={`whitespace-nowrap rounded-lg px-5 py-2 text-sm font-semibold leading-none text-white shadow-sm transition ${
                 myReady
                   ? 'bg-emerald-600 hover:bg-emerald-700'
                   : 'bg-indigo-600 hover:bg-indigo-700'
@@ -444,6 +562,8 @@ export default function RoomView({
         </form>
         </section>
       </div>
+        </>
+      )}
     </main>
   );
 }

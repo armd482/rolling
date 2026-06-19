@@ -13,6 +13,16 @@ export async function POST(req: Request) {
   }
 
   const supabase = createAdminClient();
+
+  // 게임 진행 중(작성/공개)에는 나갈 수 없다
+  const { data: room } = await supabase.from('rooms').select('state').eq('id', id).maybeSingle();
+  if (room && (room.state === 'writing' || room.state === 'revealing')) {
+    return NextResponse.json(
+      { error: '게임 진행 중에는 나갈 수 없습니다.' },
+      { status: 409 },
+    );
+  }
+
   await supabase
     .from('room_members')
     .delete()

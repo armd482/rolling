@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
 import { getValidSession } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
-import type { RoomRow, RoomMemberRow, UserRow } from '@/types/db';
+import type { RoomRow, RoomMemberRow, UserRow, AssignmentRow, MessageRow } from '@/types/db';
+import type { GameData, GameTarget, RevealMessage } from '@/types/game';
 import RoomView, { type Member } from '@/components/RoomView';
 
 export const dynamic = 'force-dynamic';
@@ -39,14 +40,77 @@ export default async function RoomPage({
     isHost: idx === 0,
   }));
 
+  const state = room?.state ?? 'lobby';
+  const mode = room?.mode ?? 'normal';
+
+  // 게임 진행 중이면 배정/메시지 로드
+  let game: GameData | null = null;
+  if (room && state !== 'lobby') {
+    const { data: assignments } = await supabase
+      .from('assignments')
+      .select('*')
+      .eq('room_id', roomId)
+      .eq('round', room.current_round)
+      .order('order_idx', { ascending: true });
+
+    const aRows = (assignments ?? []) as AssignmentRow[];
+    const aids = aRows.map((a) => a.id);
+
+    let mRows: MessageRow[] = [];
+    if (aids.length) {
+      const { data: msgs } = await supabase.from('messages').select('*').in('assignment_id', aids);
+      mRows = (msgs ?? []) as MessageRow[];
+    }
+
+    const targets: GameTarget[] = aRows.map((a) => ({
+      assignmentId: a.id,
+      userId: a.target_user_id,
+      nickname: userById.get(a.target_user_id)?.nickname ?? '?',
+      topic: a.topic,
+      orderIdx: a.order_idx,
+    }));
+
+    const myMessages: Record<string, string> = {};
+    const messagesByAssignment: Record<string, RevealMessage[]> = {};
+    const countByWriter = new Map<string, number>();
+    for (const a of aRows) messagesByAssignment[a.id] = [];
+    for (const m of mRows) {
+      if (m.writer_user_id === session.id) myMessages[m.assignment_id] = m.content;
+      countByWriter.set(m.writer_user_id, (countByWriter.get(m.writer_user_id) ?? 0) + 1);
+      messagesByAssignment[m.assignment_id]?.push({
+        writerNickname: mode === 'anonymous' ? null : userById.get(m.writer_user_id)?.nickname ?? '?',
+        content: m.content,
+      });
+    }
+
+    const required = Math.max(0, aRows.length - 1);
+    const progress = memberList.map((m) => ({
+      userId: m.userId,
+      nickname: m.nickname,
+      done: (countByWriter.get(m.userId) ?? 0) >= required,
+    }));
+
+    game = {
+      round: room.current_round,
+      targets,
+      myMessages,
+      progress,
+      messagesByAssignment,
+    };
+  }
+
   return (
     <RoomView
       roomId={roomId}
-      state={room?.state ?? 'lobby'}
-      mode={room?.mode ?? 'normal'}
+      state={state}
+      mode={mode}
+      currentTargetIdx={room?.current_target_idx ?? 0}
+      revealPage={room?.reveal_page ?? 0}
+      phaseEndsAt={room?.phase_ends_at ?? null}
       myUserId={session.id}
       myNickname={session.nickname}
       members={memberList}
+      game={game}
     />
   );
 }

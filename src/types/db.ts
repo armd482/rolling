@@ -16,6 +16,7 @@ export type RoomRow = {
   current_round: number;
   current_target_idx: number;
   reveal_page: number;
+  phase_ends_at: string | null;
   updated_at: string;
 };
 
