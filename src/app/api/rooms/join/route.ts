@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getValidSession } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { pruneStaleMembers } from '@/lib/prune';
 
 const MAX_PER_ROOM = 5;
 
@@ -48,7 +49,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: '이미 시작된 방입니다.' }, { status: 409 });
   }
 
-  // 정원 확인
+  // 정원 확인 전, 유령(웹 닫고 떠난) 멤버를 먼저 정리해 빈자리를 회수한다
+  await pruneStaleMembers(supabase, id);
   const { count } = await supabase
     .from('room_members')
     .select('id', { count: 'exact', head: true })
