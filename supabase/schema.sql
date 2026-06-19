@@ -9,8 +9,11 @@ create table if not exists public.users (
   name      text not null,
   nickname  text not null,
   email     text not null unique,
+  active_sid text,  -- 현재 활성 세션 id (같은 계정 중복 접속 차단, last-wins)
   created_at timestamptz not null default now()
 );
+-- 기존 설치 대상 컬럼 추가
+alter table public.users add column if not exists active_sid text;
 
 -- ---------- 방 (고정 7개) ----------
 -- state: lobby(대기) | writing(작성중) | revealing(공개중) | finished(종료)

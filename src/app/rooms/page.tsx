@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/session';
+import { getValidSession } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
 import type { RoomRow, RoomMemberRow, UserRow } from '@/types/db';
 import RoomList, { type RoomOverview } from '@/components/RoomList';
@@ -7,7 +7,7 @@ import RoomList, { type RoomOverview } from '@/components/RoomList';
 export const dynamic = 'force-dynamic';
 
 export default async function RoomsPage() {
-  const session = await getSession();
+  const session = await getValidSession();
   if (!session) redirect('/');
 
   const supabase = await createClient();

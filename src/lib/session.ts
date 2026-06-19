@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { cookies } from 'next/headers';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export const SESSION_COOKIE = 'rp_session';
 
@@ -9,6 +10,7 @@ export type SessionPayload = {
   email: string;
   nickname: string;
   name: string;
+  sid: string; // 이 로그인 고유 식별자 (중복 접속 차단용)
 };
 
 const enc = new TextEncoder();
@@ -71,6 +73,29 @@ export async function getSession(): Promise<SessionPayload | null> {
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   return verifySession(token);
+}
+
+// 쿠키 서명 + "현재 활성 세션인지"까지 검증.
+// 같은 계정으로 다른 곳에서 로그인하면 users.active_sid 가 바뀌어 이전 세션은 무효가 된다.
+export async function getValidSession(): Promise<SessionPayload | null> {
+  const s = await getSession();
+  if (!s) return null;
+  if (!s.sid) return s; // 구버전 쿠키 호환
+
+  try {
+    const supabase = createAdminClient();
+    const { data, error } = await supabase
+      .from('users')
+      .select('active_sid')
+      .eq('id', s.id)
+      .maybeSingle();
+    // active_sid 컬럼이 없거나 조회 실패 시에는 앱을 막지 않음(기능 비활성)
+    if (error) return s;
+    if (data?.active_sid && data.active_sid !== s.sid) return null;
+    return s;
+  } catch {
+    return s;
+  }
 }
 
 export function isAdminEmail(email: string): boolean {

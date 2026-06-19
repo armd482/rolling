@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
+import { getValidSession } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function POST(req: Request) {
-  const session = await getSession();
+  const session = await getValidSession();
   if (!session) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
 
   const { roomId } = await req.json().catch(() => ({ roomId: null }));

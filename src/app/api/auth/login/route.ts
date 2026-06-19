@@ -39,11 +39,17 @@ export async function POST(req: Request) {
     row = inserted;
   }
 
+  // 이 로그인 고유 sid 발급 → DB에 활성 세션으로 기록(last-wins).
+  // 같은 계정으로 다시 로그인하면 active_sid 가 갱신되어 이전 접속은 무효가 된다.
+  const sid = crypto.randomUUID();
+  await supabase.from('users').update({ active_sid: sid }).eq('id', row!.id);
+
   const token = await signSession({
     id: row!.id,
     email: row!.email,
     nickname: row!.nickname,
     name: row!.name,
+    sid,
   });
 
   const res = NextResponse.json({
