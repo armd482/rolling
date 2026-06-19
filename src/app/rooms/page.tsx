@@ -44,7 +44,6 @@ export default async function RoomsPage() {
   return (
     <RoomList
       overview={overview}
-      myUserId={session.id}
       myNickname={session.nickname}
       myRoomId={myRoomId}
     />

@@ -24,12 +24,10 @@ const STATE_LABEL: Record<RoomState, string> = {
 
 export default function RoomList({
   overview,
-  myUserId,
   myNickname,
   myRoomId,
 }: {
   overview: RoomOverview[];
-  myUserId: string;
   myNickname: string;
   myRoomId: number | null;
 }) {
