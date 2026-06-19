@@ -47,7 +47,8 @@ export default function WritingView({
     for (const t of myTargets) d[t.assignmentId] = myMessages[t.assignmentId] ?? '';
     return d;
   });
-  const [saved, setSaved] = useState<Record<string, boolean>>({});
+  // 제출 완료(=수정 잠금) 집합. 이미 서버에 저장된 항목은 잠금 상태로 시작한다.
+  const [submitted, setSubmitted] = useState<Set<string>>(() => new Set(Object.keys(myMessages)));
   const [now, setNow] = useState(() => Date.now());
   const firedRef = useRef(false);
 
@@ -78,11 +79,38 @@ export default function WritingView({
 
   const current = order[idx];
   const value = drafts[current.assignmentId] ?? '';
-  const writtenCount = order.filter((t) => (drafts[t.assignmentId] ?? '').trim()).length;
+  const locked = submitted.has(current.assignmentId);
+  const submittedCount = order.filter((t) => submitted.has(t.assignmentId)).length;
 
-  function save(t: GameTarget) {
-    onWrite(t.userId, drafts[t.assignmentId] ?? '');
-    setSaved((s) => ({ ...s, [t.assignmentId]: true }));
+  function submit() {
+    if (locked || expired) return;
+    const content = (drafts[current.assignmentId] ?? '').trim();
+    if (!content) return;
+    const ok = window.confirm('제출하면 더 이상 수정할 수 없습니다. 제출하시겠습니까?');
+    if (!ok) return;
+    onWrite(current.userId, content);
+    setSubmitted((prev) => {
+      const next = new Set(prev);
+      next.add(current.assignmentId);
+      return next;
+    });
+    // 다음 미제출 질문으로 자동 이동
+    let ni = -1;
+    for (let i = idx + 1; i < order.length; i++) {
+      if (!submitted.has(order[i].assignmentId)) {
+        ni = i;
+        break;
+      }
+    }
+    if (ni === -1) {
+      for (let i = 0; i < order.length; i++) {
+        if (i !== idx && !submitted.has(order[i].assignmentId)) {
+          ni = i;
+          break;
+        }
+      }
+    }
+    if (ni !== -1) setIdx(ni);
   }
 
   return (
@@ -92,7 +120,7 @@ export default function WritingView({
         <div>
           <h2 className="text-sm font-semibold">작성 시간</h2>
           <p className="text-xs text-gray-500">
-            나를 제외한 {order.length}명의 주제에 글을 남겨 주세요. (작성 {writtenCount}/{order.length})
+            나를 제외한 {order.length}명의 주제에 글을 남겨 주세요. (제출 {submittedCount}/{order.length})
           </p>
         </div>
         <div
@@ -114,8 +142,10 @@ export default function WritingView({
             <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
               {current.nickname}
             </span>
-            {saved[current.assignmentId] && (
-              <span className="text-xs text-emerald-500">저장됨</span>
+            {locked && (
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                제출 완료 · 수정 불가
+              </span>
             )}
           </div>
         </div>
@@ -126,18 +156,28 @@ export default function WritingView({
 
         <textarea
           value={value}
-          disabled={expired}
+          disabled={locked || expired}
           onChange={(e) => {
             const v = e.target.value;
             setDrafts((d) => ({ ...d, [current.assignmentId]: v }));
-            setSaved((s) => ({ ...s, [current.assignmentId]: false }));
           }}
-          onBlur={() => save(current)}
           rows={6}
           maxLength={2000}
-          placeholder={expired ? '시간이 종료되었습니다.' : '내용을 입력하세요…'}
+          placeholder={
+            locked ? '제출 완료된 답변입니다.' : expired ? '시간이 종료되었습니다.' : '내용을 입력하세요…'
+          }
           className="flex-1 resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:bg-gray-100 disabled:text-gray-400 dark:border-gray-700 dark:bg-gray-950 dark:disabled:bg-gray-800"
         />
+
+        {!locked && (
+          <button
+            onClick={submit}
+            disabled={expired || !value.trim()}
+            className="self-end rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            제출
+          </button>
+        )}
 
         {/* 이동 */}
         <div className="flex items-center justify-between">
@@ -155,7 +195,7 @@ export default function WritingView({
                 className={`h-2 w-2 rounded-full ${
                   i === idx
                     ? 'bg-indigo-600'
-                    : (drafts[t.assignmentId] ?? '').trim()
+                    : submitted.has(t.assignmentId)
                       ? 'bg-emerald-400'
                       : 'bg-gray-300 dark:bg-gray-700'
                 }`}
