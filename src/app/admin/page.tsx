@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getValidSession, isAdminEmail } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
 import type { AssignmentRow, MessageRow, UserRow } from '@/types/db';
+import AdminResetButton from '@/components/AdminResetButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,12 +77,15 @@ export default async function AdminPage() {
             배정 {entries.length}건 · 작성 {totalMessages}건
           </p>
         </div>
-        <Link
-          href="/rooms"
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"
-        >
-          방 목록
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/rooms"
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"
+          >
+            방 목록
+          </Link>
+          <AdminResetButton />
+        </div>
       </header>
 
       {entries.length === 0 ? (
