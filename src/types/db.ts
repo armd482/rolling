@@ -43,12 +43,3 @@ export type MessageRow = {
   content: string;
   created_at: string;
 };
-
-export type RoomChatRow = {
-  id: string;
-  room_id: number;
-  user_id: string;
-  nickname: string;
-  content: string;
-  created_at: string;
-};

@@ -38,12 +38,11 @@ create table if not exists public.room_members (
   id        uuid primary key default gen_random_uuid(),
   room_id   int  not null references public.rooms(id) on delete cascade,
   user_id   uuid not null references public.users(id) on delete cascade,
-  ready     boolean not null default false,  -- 준비 상태 (방장 제외)
   joined_at timestamptz not null default now(),
   unique (room_id, user_id)
 );
 -- 가장 먼저 들어온 사람이 방장 (min(joined_at))
-alter table public.room_members add column if not exists ready boolean not null default false;
+-- 준비 상태(ready)는 DB가 아니라 Supabase Realtime Presence 로 관리한다.
 
 -- ---------- 게임 라운드별 주제 배정 ----------
 create table if not exists public.assignments (
@@ -67,18 +66,9 @@ create table if not exists public.messages (
   unique (assignment_id, writer_user_id)  -- 한 대상에 대해 한 작성자는 1개
 );
 
--- ---------- 방 채팅 ----------
-create table if not exists public.room_chats (
-  id         uuid primary key default gen_random_uuid(),
-  room_id    int  not null references public.rooms(id) on delete cascade,
-  user_id    uuid not null references public.users(id) on delete cascade,
-  nickname   text not null,            -- 표시용 비정규화
-  content    text not null,
-  created_at timestamptz not null default now()
-);
+-- 방 채팅은 DB가 아니라 Supabase Realtime Broadcast 로 전송한다(영속 미저장).
 
 create index if not exists idx_members_room   on public.room_members(room_id);
-create index if not exists idx_chat_room       on public.room_chats(room_id, created_at);
 create index if not exists idx_assign_room_rd on public.assignments(room_id, round);
 create index if not exists idx_msg_assignment on public.messages(assignment_id);
 create index if not exists idx_msg_writer      on public.messages(writer_user_id);
@@ -93,7 +83,6 @@ alter table public.rooms        enable row level security;
 alter table public.room_members enable row level security;
 alter table public.assignments  enable row level security;
 alter table public.messages     enable row level security;
-alter table public.room_chats   enable row level security;
 
 do $$
 begin
@@ -117,10 +106,6 @@ begin
   if not exists (select 1 from pg_policies where tablename='messages' and policyname='read_messages') then
     create policy read_messages on public.messages for select using (true);
   end if;
-  -- room_chats
-  if not exists (select 1 from pg_policies where tablename='room_chats' and policyname='read_chats') then
-    create policy read_chats on public.room_chats for select using (true);
-  end if;
 end $$;
 
 -- =============================================================
@@ -137,4 +122,3 @@ alter publication supabase_realtime add table public.rooms;
 alter publication supabase_realtime add table public.room_members;
 alter publication supabase_realtime add table public.assignments;
 alter publication supabase_realtime add table public.messages;
-alter publication supabase_realtime add table public.room_chats;

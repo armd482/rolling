@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation';
 import { getValidSession } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
-import type { RoomRow, RoomMemberRow, UserRow, RoomChatRow } from '@/types/db';
-import RoomView, { type Member, type ChatMessage } from '@/components/RoomView';
+import type { RoomRow, RoomMemberRow, UserRow } from '@/types/db';
+import RoomView, { type Member } from '@/components/RoomView';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,23 +37,6 @@ export default async function RoomPage({
     userId: m.user_id,
     nickname: userById.get(m.user_id)?.nickname ?? '?',
     isHost: idx === 0,
-    ready: Boolean((m as RoomMemberRow & { ready?: boolean }).ready),
-  }));
-
-  // 채팅 (테이블이 아직 없으면 빈 배열)
-  const { data: chats } = await supabase
-    .from('room_chats')
-    .select('*')
-    .eq('room_id', roomId)
-    .order('created_at', { ascending: true })
-    .limit(100);
-
-  const initialChats: ChatMessage[] = (chats ?? []).map((c: RoomChatRow) => ({
-    id: c.id,
-    userId: c.user_id,
-    nickname: c.nickname,
-    content: c.content,
-    createdAt: c.created_at,
   }));
 
   return (
@@ -62,8 +45,8 @@ export default async function RoomPage({
       state={room?.state ?? 'lobby'}
       mode={room?.mode ?? 'normal'}
       myUserId={session.id}
+      myNickname={session.nickname}
       members={memberList}
-      initialChats={initialChats}
     />
   );
 }

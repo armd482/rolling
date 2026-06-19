@@ -2,16 +2,16 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
-import type { RoomState, RoomMode, RoomChatRow } from '@/types/db';
+import type { RoomState, RoomMode } from '@/types/db';
 
-export type Member = { userId: string; nickname: string; isHost: boolean; ready: boolean };
+export type Member = { userId: string; nickname: string; isHost: boolean };
 export type ChatMessage = {
   id: string;
   userId: string;
   nickname: string;
   content: string;
-  createdAt: string;
 };
 
 const STATE_LABEL: Record<RoomState, string> = {
@@ -26,32 +26,47 @@ export default function RoomView({
   state,
   mode,
   myUserId,
+  myNickname,
   members,
-  initialChats,
 }: {
   roomId: number;
   state: RoomState;
   mode: RoomMode;
   myUserId: string;
+  myNickname: string;
   members: Member[];
-  initialChats: ChatMessage[];
 }) {
   const router = useRouter();
-  const [chats, setChats] = useState<ChatMessage[]>(initialChats);
+  const [chats, setChats] = useState<ChatMessage[]>([]);
   const [text, setText] = useState('');
-  const [sending, setSending] = useState(false);
   const [leaving, setLeaving] = useState(false);
-  const [readyBusy, setReadyBusy] = useState(false);
+  // 준비 상태: Presence 로 동기화 (DB 미사용). userId -> ready
+  const [readyMap, setReadyMap] = useState<Record<string, boolean>>({});
+  const channelRef = useRef<RealtimeChannel | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const me = members.find((m) => m.userId === myUserId);
   const iAmHost = me?.isHost ?? false;
+  const myReady = readyMap[myUserId] ?? false;
 
-  // 멤버/방 상태 변경 → 서버 컴포넌트 갱신, 채팅 INSERT → 즉시 반영
   useEffect(() => {
     const supabase = createClient();
-    const channel = supabase
-      .channel(`room-${roomId}`)
+    const channel = supabase.channel(`room-${roomId}`, {
+      config: { presence: { key: myUserId }, broadcast: { self: true } },
+    });
+    channelRef.current = channel;
+
+    const applyPresence = () => {
+      const presence = channel.presenceState<{ ready?: boolean }>();
+      const map: Record<string, boolean> = {};
+      for (const key of Object.keys(presence)) {
+        map[key] = Boolean(presence[key]?.[0]?.ready);
+      }
+      setReadyMap(map);
+    };
+
+    channel
+      // 멤버십/방장(=DB)·방 상태 변경 → 서버 컴포넌트 갱신
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'room_members', filter: `room_id=eq.${roomId}` },
@@ -62,76 +77,49 @@ export default function RoomView({
         { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
         () => router.refresh(),
       )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'room_chats', filter: `room_id=eq.${roomId}` },
-        (payload) => {
-          const c = payload.new as RoomChatRow;
-          setChats((prev) =>
-            prev.some((m) => m.id === c.id)
-              ? prev
-              : [
-                  ...prev,
-                  {
-                    id: c.id,
-                    userId: c.user_id,
-                    nickname: c.nickname,
-                    content: c.content,
-                    createdAt: c.created_at,
-                  },
-                ],
-          );
-        },
-      )
-      .subscribe();
+      // 준비 상태 (Presence)
+      .on('presence', { event: 'sync' }, applyPresence)
+      // 채팅 (Broadcast, DB 미기록)
+      .on('broadcast', { event: 'chat' }, ({ payload }) => {
+        const c = payload as ChatMessage;
+        setChats((prev) => (prev.some((m) => m.id === c.id) ? prev : [...prev, c]));
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          channel.track({ ready: false });
+        }
+      });
+
     return () => {
       supabase.removeChannel(channel);
+      channelRef.current = null;
     };
-  }, [roomId, router]);
+  }, [roomId, router, myUserId]);
 
   // 새 메시지 도착 시 맨 아래로 스크롤
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [chats]);
 
-  async function send(e: React.FormEvent) {
+  function send(e: React.FormEvent) {
     e.preventDefault();
     const content = text.trim();
-    if (!content || sending) return;
-    setSending(true);
+    if (!content || !channelRef.current) return;
     setText('');
-    try {
-      const res = await fetch('/api/rooms/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId, content }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setText(content); // 실패 시 입력 복원
-        alert(data.error ?? '전송 실패');
-      }
-    } finally {
-      setSending(false);
-    }
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'chat',
+      payload: {
+        id: crypto.randomUUID(),
+        userId: myUserId,
+        nickname: myNickname,
+        content,
+      } satisfies ChatMessage,
+    });
   }
 
   async function toggleReady() {
-    if (readyBusy || !me) return;
-    setReadyBusy(true);
-    try {
-      const res = await fetch('/api/rooms/ready', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId, ready: !me.ready }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        alert(data.error ?? '처리 실패');
-      }
-    } finally {
-      setReadyBusy(false);
-    }
+    await channelRef.current?.track({ ready: !myReady });
   }
 
   async function leave() {
@@ -175,59 +163,59 @@ export default function RoomView({
             참가자 {members.length}/5
           </h2>
           {iAmHost ? (
-            <span className="text-xs text-amber-600 dark:text-amber-400">
-              👑 당신이 방장입니다
-            </span>
+            <span className="text-xs text-amber-600 dark:text-amber-400">👑 당신이 방장입니다</span>
           ) : (
             <button
               onClick={toggleReady}
-              disabled={readyBusy}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:opacity-50 ${
-                me?.ready
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                myReady
                   ? 'bg-emerald-600 text-white hover:bg-emerald-700'
                   : 'border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-900'
               }`}
             >
-              {me?.ready ? '✓ 준비 완료 (해제)' : '준비하기'}
+              {myReady ? '✓ 준비 완료 (해제)' : '준비하기'}
             </button>
           )}
         </div>
         <ul className="space-y-1.5">
-          {members.map((m) => (
-            <li
-              key={m.userId}
-              className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
-                m.userId === myUserId
-                  ? 'bg-indigo-50 dark:bg-indigo-950/50'
-                  : 'bg-gray-50 dark:bg-gray-900'
-              }`}
-            >
-              <span className="font-medium">
-                {m.nickname}
-                {m.isHost && ' 👑'}
-                {m.userId === myUserId && ' (나)'}
-              </span>
-              {m.isHost ? (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                  방장
+          {members.map((m) => {
+            const ready = readyMap[m.userId] ?? false;
+            return (
+              <li
+                key={m.userId}
+                className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
+                  m.userId === myUserId
+                    ? 'bg-indigo-50 dark:bg-indigo-950/50'
+                    : 'bg-gray-50 dark:bg-gray-900'
+                }`}
+              >
+                <span className="font-medium">
+                  {m.nickname}
+                  {m.isHost && ' 👑'}
+                  {m.userId === myUserId && ' (나)'}
                 </span>
-              ) : m.ready ? (
-                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                  ✓ 준비 완료
-                </span>
-              ) : (
-                <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                  대기 중
-                </span>
-              )}
-            </li>
-          ))}
+                {m.isHost ? (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                    방장
+                  </span>
+                ) : ready ? (
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                    ✓ 준비 완료
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                    대기 중
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </section>
 
       <div className="mb-2 mt-2 border-t border-gray-200 dark:border-gray-800" />
 
-      {/* 채팅 */}
+      {/* 채팅 (휘발성 · Broadcast) */}
       <section className="flex min-h-0 flex-1 flex-col">
         <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">채팅</h2>
         <div
@@ -241,9 +229,7 @@ export default function RoomView({
               const mine = c.userId === myUserId;
               return (
                 <div key={c.id} className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
-                  {!mine && (
-                    <span className="mb-0.5 px-1 text-xs text-gray-500">{c.nickname}</span>
-                  )}
+                  {!mine && <span className="mb-0.5 px-1 text-xs text-gray-500">{c.nickname}</span>}
                   <span
                     className={`max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${
                       mine
@@ -269,7 +255,7 @@ export default function RoomView({
           />
           <button
             type="submit"
-            disabled={sending || !text.trim()}
+            disabled={!text.trim()}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
           >
             전송
