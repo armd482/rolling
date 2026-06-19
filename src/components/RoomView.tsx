@@ -80,6 +80,10 @@ export default function RoomView({
   const myReady = readyMap[myUserId] ?? false;
   const gameInProgress = state === 'writing' || state === 'revealing';
 
+  // 하트비트 인터벌(고정 deps) 안에서 최신 방장/상태 값을 읽기 위한 ref
+  const pruneRef = useRef({ iAmHost, state });
+  pruneRef.current = { iAmHost, state };
+
   // 시작 가능 조건: 총 3명 이상이고, 방장 외 참가자 전원이 준비 완료
   const others = members.filter((m) => !m.isHost);
   const readyCount = others.filter((m) => readyMap[m.userId] ?? false).length;
@@ -193,6 +197,14 @@ export default function RoomView({
     const timer = setInterval(() => {
       beat();
       router.refresh();
+      // 로비에서는 방장이 유령(웹 닫고 떠난) 멤버를 정리한다.
+      if (pruneRef.current.iAmHost && pruneRef.current.state === 'lobby') {
+        fetch('/api/rooms/prune', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomId }),
+        }).catch(() => {});
+      }
     }, 6000);
     return () => clearInterval(timer);
   }, [roomId, router]);
