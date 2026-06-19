@@ -65,7 +65,18 @@ create table if not exists public.messages (
   unique (assignment_id, writer_user_id)  -- 한 대상에 대해 한 작성자는 1개
 );
 
+-- ---------- 방 채팅 ----------
+create table if not exists public.room_chats (
+  id         uuid primary key default gen_random_uuid(),
+  room_id    int  not null references public.rooms(id) on delete cascade,
+  user_id    uuid not null references public.users(id) on delete cascade,
+  nickname   text not null,            -- 표시용 비정규화
+  content    text not null,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists idx_members_room   on public.room_members(room_id);
+create index if not exists idx_chat_room       on public.room_chats(room_id, created_at);
 create index if not exists idx_assign_room_rd on public.assignments(room_id, round);
 create index if not exists idx_msg_assignment on public.messages(assignment_id);
 create index if not exists idx_msg_writer      on public.messages(writer_user_id);
@@ -80,6 +91,7 @@ alter table public.rooms        enable row level security;
 alter table public.room_members enable row level security;
 alter table public.assignments  enable row level security;
 alter table public.messages     enable row level security;
+alter table public.room_chats   enable row level security;
 
 do $$
 begin
@@ -103,6 +115,10 @@ begin
   if not exists (select 1 from pg_policies where tablename='messages' and policyname='read_messages') then
     create policy read_messages on public.messages for select using (true);
   end if;
+  -- room_chats
+  if not exists (select 1 from pg_policies where tablename='room_chats' and policyname='read_chats') then
+    create policy read_chats on public.room_chats for select using (true);
+  end if;
 end $$;
 
 -- =============================================================
@@ -119,3 +135,4 @@ alter publication supabase_realtime add table public.rooms;
 alter publication supabase_realtime add table public.room_members;
 alter publication supabase_realtime add table public.assignments;
 alter publication supabase_realtime add table public.messages;
+alter publication supabase_realtime add table public.room_chats;
