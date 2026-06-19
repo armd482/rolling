@@ -10,9 +10,6 @@ export default function SessionGuard({ intervalMs = 10000 }: { intervalMs?: numb
 
   useEffect(() => {
     let alive = true;
-    let timer: ReturnType<typeof setInterval>;
-
-    const onFocus = () => check();
 
     const cleanup = () => {
       alive = false;
@@ -39,9 +36,10 @@ export default function SessionGuard({ intervalMs = 10000 }: { intervalMs?: numb
       }
     }
 
-    check();
-    timer = setInterval(check, intervalMs);
+    const onFocus = () => check();
+    const timer = setInterval(check, intervalMs);
     window.addEventListener('focus', onFocus);
+    check();
 
     return cleanup;
   }, [intervalMs]);
