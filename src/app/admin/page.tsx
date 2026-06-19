@@ -1,9 +1,9 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getValidSession, isAdminEmail } from '@/lib/session';
+import { getAdminSession } from '@/lib/admin-session';
 import { createClient } from '@/lib/supabase/server';
 import type { AssignmentRow, MessageRow, UserRow } from '@/types/db';
 import AdminResetButton from '@/components/AdminResetButton';
+import AdminLogoutButton from '@/components/AdminLogoutButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,9 +18,8 @@ type ResultEntry = {
 };
 
 export default async function AdminPage() {
-  const session = await getValidSession();
-  if (!session) redirect('/');
-  if (!isAdminEmail(session.email)) redirect('/rooms');
+  const admin = await getAdminSession();
+  if (!admin) redirect('/admin/login');
 
   const supabase = await createClient();
   const [{ data: assignments }, { data: messages }, { data: users }] = await Promise.all([
@@ -78,13 +77,8 @@ export default async function AdminPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href="/rooms"
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"
-          >
-            방 목록
-          </Link>
           <AdminResetButton />
+          <AdminLogoutButton />
         </div>
       </header>
 

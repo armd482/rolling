@@ -27,13 +27,11 @@ export default function RoomList({
   myUserId,
   myNickname,
   myRoomId,
-  isAdmin = false,
 }: {
   overview: RoomOverview[];
   myUserId: string;
   myNickname: string;
   myRoomId: number | null;
-  isAdmin?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -95,14 +93,12 @@ export default function RoomList({
           </p>
         </div>
         <div className="flex items-center gap-4">
-          {isAdmin && (
-            <Link
-              href="/admin"
-              className="text-sm font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
-            >
-              관리자
-            </Link>
-          )}
+          <Link
+            href="/admin"
+            className="text-sm text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+          >
+            관리자
+          </Link>
           <button onClick={logout} className="text-sm text-gray-500 hover:text-gray-800">
             로그아웃
           </button>
