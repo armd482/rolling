@@ -43,3 +43,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# agent docs (로컬 전용)
+AGENTS.md
+CLAUDE.md
