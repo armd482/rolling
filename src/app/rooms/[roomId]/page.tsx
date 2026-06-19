@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import type { RoomRow, RoomMemberRow, UserRow, AssignmentRow, MessageRow } from '@/types/db';
 import type { GameData, GameTarget, RevealMessage } from '@/types/game';
 import RoomView, { type Member } from '@/components/RoomView';
+import { effectiveHostId } from '@/lib/host';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,10 +35,13 @@ export default async function RoomPage({
   const sortedMembers = (members ?? []).sort((a, b) =>
     a.joined_at.localeCompare(b.joined_at),
   );
-  const memberList: Member[] = sortedMembers.map((m, idx) => ({
+  // 방장 = 가장 먼저 입장한 멤버 중 현재 접속 중(last_seen 최신)인 사람.
+  // 원래 방장이 자리를 비우면 다음 접속 멤버가, 돌아오면 다시 원래 방장이 방장이 된다.
+  const hostId = effectiveHostId(sortedMembers as RoomMemberRow[]);
+  const memberList: Member[] = sortedMembers.map((m) => ({
     userId: m.user_id,
     nickname: userById.get(m.user_id)?.nickname ?? '?',
-    isHost: idx === 0,
+    isHost: m.user_id === hostId,
   }));
 
   const state = room?.state ?? 'lobby';

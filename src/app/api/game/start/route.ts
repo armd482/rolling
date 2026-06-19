@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getValidSession } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { pickTopics, writingDeadline } from '@/lib/game';
+import { effectiveHostId } from '@/lib/host';
 
 export async function POST(req: Request) {
   const session = await getValidSession();
@@ -15,16 +16,16 @@ export async function POST(req: Request) {
 
   const supabase = createAdminClient();
 
-  // 방장(가장 먼저 입장) + 최소 3명
+  // 방장(현재 접속 중인 유효 방장) + 최소 3명
   const { data: members } = await supabase
     .from('room_members')
-    .select('user_id, joined_at')
+    .select('user_id, joined_at, last_seen')
     .eq('room_id', id)
     .order('joined_at', { ascending: true });
   if (!members || members.length < 3) {
     return NextResponse.json({ error: '3명 이상 모여야 시작할 수 있습니다.' }, { status: 400 });
   }
-  if (members[0].user_id !== session.id) {
+  if (effectiveHostId(members) !== session.id) {
     return NextResponse.json({ error: '방장만 시작할 수 있습니다.' }, { status: 403 });
   }
 

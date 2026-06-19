@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getValidSession } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { revealDeadline } from '@/lib/game';
+import { effectiveHostId, originalHostId, originalHostOffline } from '@/lib/host';
 
-// 공개 단계 페이지 이동. dir: 'next' | 'prev' (방장만 조작 가능)
+// 공개 단계 페이지 이동. dir: 'next' | 'prev'
+// - 방장: 언제든 next/prev 가능 (페이지를 넘길 때마다 stall 마감 갱신)
+// - 그 외 참가자: 방장이 안 돌아와 stall 마감(phase_ends_at)이 지난 경우에만 'next' 자동 진행 가능
 // 한 대상의 메시지를 한 장씩 넘기고, 마지막 장에서 next 면 다음 대상으로,
 // 마지막 대상의 마지막 장에서 next 면 종료(finished)된다.
 export async function POST(req: Request) {
@@ -17,27 +21,35 @@ export async function POST(req: Request) {
 
   const supabase = createAdminClient();
 
-  // 방장(가장 먼저 입장) 여부 + 방 참가자 여부
+  // 방장 여부 + 방 참가자 여부 (방장 = 현재 접속 중인 유효 방장)
   const { data: membersRows } = await supabase
     .from('room_members')
-    .select('user_id, joined_at')
+    .select('user_id, joined_at, last_seen')
     .eq('room_id', id)
     .order('joined_at', { ascending: true });
-  const isMember = (membersRows ?? []).some((m) => m.user_id === session.id);
+  const members = membersRows ?? [];
+  const isMember = members.some((m) => m.user_id === session.id);
   if (!isMember) {
     return NextResponse.json({ error: '방 참가자가 아닙니다.' }, { status: 403 });
   }
-  if (membersRows?.[0]?.user_id !== session.id) {
-    return NextResponse.json({ error: '방장만 조작할 수 있습니다.' }, { status: 403 });
-  }
+  const isHost = effectiveHostId(members) === session.id;
 
   const { data: room } = await supabase
     .from('rooms')
-    .select('state, current_round, current_target_idx, reveal_page')
+    .select('state, current_round, current_target_idx, reveal_page, phase_ends_at')
     .eq('id', id)
     .maybeSingle();
   if (!room || room.state !== 'revealing') {
     return NextResponse.json({ error: '공개 단계가 아닙니다.' }, { status: 409 });
+  }
+
+  // 방장이 아니면: stall 마감이 지난 경우의 'next'(자동 진행)만 허용
+  if (!isHost) {
+    const stalled =
+      !!room.phase_ends_at && Date.now() >= new Date(room.phase_ends_at).getTime();
+    if (!stalled || dir !== 'next') {
+      return NextResponse.json({ error: '방장만 조작할 수 있습니다.' }, { status: 403 });
+    }
   }
 
   // 대상 순서
@@ -78,14 +90,26 @@ export async function POST(req: Request) {
       pg = 0;
     } else {
       // 마지막 대상의 마지막 장 → 종료. 직전 위치가 같을 때만 1회 적용.
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('rooms')
-        .update({ state: 'finished', phase_ends_at: null })
+        .update({ state: 'finished', phase_ends_at: null }, { count: 'exact' })
         .eq('id', id)
         .eq('state', 'revealing')
         .eq('current_target_idx', ti0)
         .eq('reveal_page', pg0);
       if (error) return NextResponse.json({ error: '전환 실패' }, { status: 500 });
+      // 이 요청이 실제로 종료를 적용했을 때(count===1), 원래 방장이 아직 미복귀(오프라인)면
+      // 이탈한 것으로 보고 멤버에서 제거 → 방장 승계를 영구화한다.
+      if (count === 1 && originalHostOffline(members)) {
+        const evictId = originalHostId(members);
+        if (evictId) {
+          await supabase
+            .from('room_members')
+            .delete()
+            .eq('room_id', id)
+            .eq('user_id', evictId);
+        }
+      }
       return NextResponse.json({ ok: true, finished: true });
     }
   } else {
@@ -101,7 +125,7 @@ export async function POST(req: Request) {
   // 직전 위치(ti0,pg0)와 일치할 때만 적용 → 동시/중복 호출 시 1회만 이동
   const { error } = await supabase
     .from('rooms')
-    .update({ current_target_idx: ti, reveal_page: pg })
+    .update({ current_target_idx: ti, reveal_page: pg, phase_ends_at: revealDeadline() })
     .eq('id', id)
     .eq('state', 'revealing')
     .eq('current_target_idx', ti0)

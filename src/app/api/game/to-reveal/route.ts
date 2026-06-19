@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getValidSession } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { effectiveHostId } from '@/lib/host';
+import { revealDeadline } from '@/lib/game';
 
 // 작성 단계 → 공개 단계 전환. 마감 시각이 지났거나 전원이 작성을 완료하면 전환한다.
 // 어느 클라이언트가 호출해도 안전하도록 조건부 UPDATE 로 1회만 적용.
@@ -29,7 +31,11 @@ export async function POST(req: Request) {
 
   // 전원 완료 여부 계산
   const [{ data: members }, { data: assignments }] = await Promise.all([
-    supabase.from('room_members').select('user_id').eq('room_id', id),
+    supabase
+      .from('room_members')
+      .select('user_id, joined_at, last_seen')
+      .eq('room_id', id)
+      .order('joined_at', { ascending: true }),
     supabase.from('assignments').select('id').eq('room_id', id).eq('round', room.current_round),
   ]);
   const aids = (assignments ?? []).map((a) => a.id);
@@ -47,18 +53,8 @@ export async function POST(req: Request) {
     allDone = members.every((m) => (countByWriter.get(m.user_id) ?? 0) >= required);
   }
 
-  // 방장(가장 먼저 입장)만 강제 전환 가능
-  let canForce = false;
-  if (force) {
-    const { data: hostRow } = await supabase
-      .from('room_members')
-      .select('user_id')
-      .eq('room_id', id)
-      .order('joined_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    canForce = hostRow?.user_id === session.id;
-  }
+  // 방장(현재 접속 중인 유효 방장)만 강제 전환 가능
+  const canForce = !!force && effectiveHostId(members ?? []) === session.id;
 
   if (!deadlinePassed && !allDone && !canForce) {
     return NextResponse.json({ ok: false, allDone: false });
@@ -70,7 +66,8 @@ export async function POST(req: Request) {
       state: 'revealing',
       current_target_idx: 0,
       reveal_page: 0,
-      phase_ends_at: null,
+      // 공개 단계 자동진행(stall) 마감
+      phase_ends_at: revealDeadline(),
     })
     .eq('id', id)
     .eq('state', 'writing');

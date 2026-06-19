@@ -25,6 +25,7 @@ export type RoomMemberRow = {
   room_id: number;
   user_id: string;
   joined_at: string;
+  last_seen: string | null;
 };
 
 export type AssignmentRow = {

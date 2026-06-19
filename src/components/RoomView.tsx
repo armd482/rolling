@@ -114,12 +114,19 @@ export default function RoomView({
     };
 
     channel
-      // 멤버십/방장(=DB)·방 상태 변경 → 서버 컴포넌트 갱신
+      // 멤버십(입장/퇴장/강퇴/이탈) 변경 → 서버 컴포넌트 갱신
       // DELETE 는 기본 replica identity(PK만)라 페이로드에 room_id 가 없어 필터가 매칭되지 않는다.
       // 따라서 필터 없이 모든 room_members 변경을 수신하고, 갱신은 서버에서 roomId 로 스코프한다.
+      // UPDATE(=하트비트 last_seen)는 제외한다 — 매 하트비트마다 전원이 새로고침되는 폭주를 막기 위함.
+      // 시간 경과에 따른 유효 방장 변경은 아래 주기적 새로고침이 처리한다.
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'room_members' },
+        { event: 'INSERT', schema: 'public', table: 'room_members' },
+        () => router.refresh(),
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'room_members' },
         () => router.refresh(),
       )
       .on(
@@ -169,6 +176,26 @@ export default function RoomView({
       channelRef.current = null;
     };
   }, [roomId, router, myUserId]);
+
+  // 접속 유지(하트비트) + 주기적 새로고침
+  // - 하트비트: last_seen 을 갱신해 "접속 중"으로 유지(방장 승계 판정 기준).
+  // - 새로고침: 시간이 지나 바뀌는 유효 방장(원래 방장이 자리를 비우면 다음 멤버로 승계,
+  //   돌아오면 원복)을 서버 컴포넌트가 다시 계산하도록 한다.
+  useEffect(() => {
+    const beat = () => {
+      fetch('/api/rooms/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId }),
+      }).catch(() => {});
+    };
+    beat();
+    const timer = setInterval(() => {
+      beat();
+      router.refresh();
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [roomId, router]);
 
   // 새 메시지 도착 시 맨 아래로 스크롤
   useEffect(() => {

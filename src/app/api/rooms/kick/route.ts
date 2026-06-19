@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getValidSession } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { effectiveHostId } from '@/lib/host';
 
 export async function POST(req: Request) {
   const session = await getValidSession();
@@ -17,14 +18,13 @@ export async function POST(req: Request) {
 
   const supabase = createAdminClient();
 
-  // 방장(가장 먼저 입장한 멤버)만 강퇴 가능
+  // 방장(현재 접속 중인 유효 방장)만 강퇴 가능
   const { data: members } = await supabase
     .from('room_members')
-    .select('user_id, joined_at')
+    .select('user_id, joined_at, last_seen')
     .eq('room_id', id)
     .order('joined_at', { ascending: true });
-  const host = members?.[0];
-  if (!host || host.user_id !== session.id) {
+  if (effectiveHostId(members ?? []) !== session.id) {
     return NextResponse.json({ error: '방장만 강퇴할 수 있습니다.' }, { status: 403 });
   }
 

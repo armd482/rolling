@@ -18,3 +18,9 @@ export function writingDeadline(memberCount: number): string {
   const topicsPerWriter = Math.max(1, memberCount - 1);
   return new Date(Date.now() + topicsPerWriter * SECONDS_PER_TOPIC * 1000).toISOString();
 }
+
+// 공개 단계에서 방장이 멈춰(stall) 있을 때, 이 시간이 지나면 다른 참가자가 자동으로 다음 장을 넘길 수 있다.
+export const REVEAL_STALL_SECONDS = 60;
+export function revealDeadline(): string {
+  return new Date(Date.now() + REVEAL_STALL_SECONDS * 1000).toISOString();
+}

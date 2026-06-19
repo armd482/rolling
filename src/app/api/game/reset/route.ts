@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getValidSession } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { effectiveHostId } from '@/lib/host';
 
 // 종료(finished) 후 방장이 대기실로 되돌린다. 배정/메시지는 기록용으로 보존.
 export async function POST(req: Request) {
@@ -15,14 +16,12 @@ export async function POST(req: Request) {
 
   const supabase = createAdminClient();
 
-  const { data: hostRow } = await supabase
+  const { data: members } = await supabase
     .from('room_members')
-    .select('user_id')
+    .select('user_id, joined_at, last_seen')
     .eq('room_id', id)
-    .order('joined_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (hostRow?.user_id !== session.id) {
+    .order('joined_at', { ascending: true });
+  if (effectiveHostId(members ?? []) !== session.id) {
     return NextResponse.json({ error: '방장만 조작할 수 있습니다.' }, { status: 403 });
   }
 
