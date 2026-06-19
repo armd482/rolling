@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameTarget } from '@/types/game';
 
+// 질문 1개당 작성 시간(개별 관리). 제출하거나 시간이 끝나면 다음 질문으로 넘어간다.
+const QUESTION_SECONDS = 120;
+
 function fmt(sec: number) {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
@@ -50,26 +53,71 @@ export default function WritingView({
   // 제출 완료(=수정 잠금) 집합. 이미 서버에 저장된 항목은 잠금 상태로 시작한다.
   const [submitted, setSubmitted] = useState<Set<string>>(() => new Set(Object.keys(myMessages)));
   const [now, setNow] = useState(() => Date.now());
+  // 현재 질문의 개별 마감 시각. 질문이 바뀔 때(제출/시간초과)마다 새로 부여한다.
+  const [qDeadline, setQDeadline] = useState(() => Date.now() + QUESTION_SECONDS * 1000);
   const firedRef = useRef(false);
+  const autoFiredRef = useRef<string | null>(null);
 
+  const current = order[idx];
+  const locked = current ? submitted.has(current.assignmentId) : false;
+
+  // 전체 작성 단계 마감(서버 phase_ends_at): 떠난 작성자까지 포함해 단계를 끝내는 안전장치.
+  const overallEnd = phaseEndsAt ? new Date(phaseEndsAt).getTime() : null;
+  const overallRemaining =
+    overallEnd !== null ? Math.max(0, Math.ceil((overallEnd - now) / 1000)) : null;
+  const overallExpired = overallRemaining === 0;
+  const overallUrgent = overallRemaining !== null && overallRemaining <= 30;
+
+  const qRemaining = Math.max(0, Math.ceil((qDeadline - now) / 1000));
+  const qExpired = !!current && qRemaining === 0;
+  const qUrgent = qRemaining <= 30;
+
+  // 타이머 콜백이 참조할 최신 값(렌더 중 ref 쓰기 금지 → 효과에서 갱신)
+  const latestRef = useRef<{
+    current: GameTarget | undefined;
+    locked: boolean;
+    drafts: Record<string, string>;
+    qDeadline: number;
+    orderLen: number;
+  }>({ current, locked, drafts, qDeadline, orderLen: order.length });
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
+    latestRef.current = { current, locked, drafts, qDeadline, orderLen: order.length };
+  });
+
+  // 1초 틱 + 질문별 마감 시 현재 입력을 강제 제출하고 다음 질문으로(앞으로만).
+  // setState 를 인터벌 콜백 안에서 호출하므로 렌더/효과 본문 규칙에 걸리지 않는다.
+  useEffect(() => {
+    const t = setInterval(() => {
+      setNow(Date.now());
+      const L = latestRef.current;
+      if (
+        L.current &&
+        !L.locked &&
+        Date.now() >= L.qDeadline &&
+        autoFiredRef.current !== L.current.assignmentId
+      ) {
+        autoFiredRef.current = L.current.assignmentId;
+        onWrite(L.current.userId, L.drafts[L.current.assignmentId] ?? '');
+        setSubmitted((prev) => {
+          const next = new Set(prev);
+          next.add(L.current!.assignmentId);
+          return next;
+        });
+        setIdx((i) => Math.min(L.orderLen - 1, i + 1));
+        setQDeadline(Date.now() + QUESTION_SECONDS * 1000);
+      }
+    }, 1000);
     return () => clearInterval(t);
-  }, []);
-
-  const endMs = phaseEndsAt ? new Date(phaseEndsAt).getTime() : null;
-  const remaining = endMs !== null ? Math.max(0, Math.ceil((endMs - now) / 1000)) : null;
-  const expired = remaining === 0;
-  const urgent = remaining !== null && remaining <= 30;
+  }, [onWrite]);
 
   useEffect(() => {
-    if (expired && !firedRef.current) {
+    if (overallExpired && !firedRef.current) {
       firedRef.current = true;
       onTimeUp();
     }
-  }, [expired, onTimeUp]);
+  }, [overallExpired, onTimeUp]);
 
-  if (order.length === 0) {
+  if (!current) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <p className="text-sm text-gray-500">작성할 주제가 없습니다. 잠시만 기다려 주세요.</p>
@@ -77,13 +125,12 @@ export default function WritingView({
     );
   }
 
-  const current = order[idx];
   const value = drafts[current.assignmentId] ?? '';
-  const locked = submitted.has(current.assignmentId);
   const submittedCount = order.filter((t) => submitted.has(t.assignmentId)).length;
+  const allSubmitted = order.every((t) => submitted.has(t.assignmentId));
 
   function submit() {
-    if (locked || expired) return;
+    if (locked) return;
     const content = (drafts[current.assignmentId] ?? '').trim();
     if (!content) return;
     const ok = window.confirm('제출하면 더 이상 수정할 수 없습니다. 제출하시겠습니까?');
@@ -94,26 +141,9 @@ export default function WritingView({
       next.add(current.assignmentId);
       return next;
     });
-    // 다음 미제출 질문으로 자동 이동
-    let ni = -1;
-    for (let i = idx + 1; i < order.length; i++) {
-      if (!submitted.has(order[i].assignmentId)) {
-        ni = i;
-        break;
-      }
-    }
-    if (ni === -1) {
-      for (let i = 0; i < order.length; i++) {
-        if (i !== idx && !submitted.has(order[i].assignmentId)) {
-          ni = i;
-          break;
-        }
-      }
-    }
-    if (ni !== -1) setIdx(ni);
+    setIdx((i) => Math.min(order.length - 1, i + 1));
+    setQDeadline(Date.now() + QUESTION_SECONDS * 1000);
   }
-
-  const allSubmitted = order.every((t) => submitted.has(t.assignmentId));
 
   const progressAside = (
     <aside className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
@@ -149,10 +179,10 @@ export default function WritingView({
           </div>
           <div
             className={`font-mono text-3xl font-bold tabular-nums ${
-              urgent ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'
+              overallUrgent ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'
             }`}
           >
-            {remaining === null ? '--:--' : fmt(remaining)}
+            {overallRemaining === null ? '--:--' : fmt(overallRemaining)}
           </div>
         </div>
 
@@ -212,22 +242,25 @@ export default function WritingView({
     );
   }
 
+  const inputDisabled = locked || qExpired || overallExpired;
+
   return (
     <div className="flex flex-1 flex-col gap-5">
-      {/* 상단 타이머 */}
+      {/* 상단: 이 질문의 개별 남은 시간 */}
       <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-white px-5 py-4 dark:border-gray-800 dark:bg-gray-900">
         <div>
-          <h2 className="text-sm font-semibold">작성 시간</h2>
+          <h2 className="text-sm font-semibold">이 질문 남은 시간</h2>
           <p className="text-xs text-gray-500">
-            나를 제외한 {order.length}명의 주제에 글을 남겨 주세요. (제출 {submittedCount}/{order.length})
+            질문마다 {Math.round(QUESTION_SECONDS / 60)}분씩, 제출하거나 시간이 끝나면 다음 질문으로
+            넘어갑니다. (제출 {submittedCount}/{order.length})
           </p>
         </div>
         <div
           className={`font-mono text-3xl font-bold tabular-nums ${
-            urgent ? 'text-red-500' : 'text-indigo-600 dark:text-indigo-400'
+            qUrgent ? 'text-red-500' : 'text-indigo-600 dark:text-indigo-400'
           }`}
         >
-          {remaining === null ? '--:--' : fmt(remaining)}
+          {fmt(qRemaining)}
         </div>
       </div>
 
@@ -237,16 +270,9 @@ export default function WritingView({
           <span className="text-xs font-medium uppercase tracking-wide text-gray-400">
             질문 {idx + 1} / {order.length}
           </span>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
-              {current.nickname}
-            </span>
-            {locked && (
-              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                제출 완료 · 수정 불가
-              </span>
-            )}
-          </div>
+          <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
+            {current.nickname}
+          </span>
         </div>
 
         <p className="whitespace-pre-wrap text-base font-medium text-gray-800 dark:text-gray-100">
@@ -255,28 +281,24 @@ export default function WritingView({
 
         <textarea
           value={value}
-          disabled={locked || expired}
+          disabled={inputDisabled}
           onChange={(e) => {
             const v = e.target.value;
             setDrafts((d) => ({ ...d, [current.assignmentId]: v }));
           }}
           rows={6}
           maxLength={2000}
-          placeholder={
-            locked ? '제출 완료된 답변입니다.' : expired ? '시간이 종료되었습니다.' : '내용을 입력하세요…'
-          }
+          placeholder={inputDisabled ? '시간이 종료되었습니다.' : '내용을 입력하세요…'}
           className="flex-1 resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:bg-gray-100 disabled:text-gray-400 dark:border-gray-700 dark:bg-gray-950 dark:disabled:bg-gray-800"
         />
 
-        {!locked && (
-          <button
-            onClick={submit}
-            disabled={expired || !value.trim()}
-            className="self-end rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            제출
-          </button>
-        )}
+        <button
+          onClick={submit}
+          disabled={inputDisabled || !value.trim()}
+          className="self-end rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          제출
+        </button>
       </div>
 
       {/* 완료 현황 */}
