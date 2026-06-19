@@ -277,38 +277,6 @@ export default function WritingView({
             제출
           </button>
         )}
-
-        {/* 이동 */}
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => setIdx((i) => Math.max(0, i - 1))}
-            disabled={idx === 0}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"
-          >
-            이전
-          </button>
-          <div className="flex gap-1.5">
-            {order.map((t, i) => (
-              <span
-                key={t.assignmentId}
-                className={`h-2 w-2 rounded-full ${
-                  i === idx
-                    ? 'bg-indigo-600'
-                    : submitted.has(t.assignmentId)
-                      ? 'bg-emerald-400'
-                      : 'bg-gray-300 dark:bg-gray-700'
-                }`}
-              />
-            ))}
-          </div>
-          <button
-            onClick={() => setIdx((i) => Math.min(order.length - 1, i + 1))}
-            disabled={idx === order.length - 1}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"
-          >
-            다음
-          </button>
-        </div>
       </div>
 
       {/* 완료 현황 */}
