@@ -66,7 +66,6 @@ export default function WritingView({
   const overallRemaining =
     overallEnd !== null ? Math.max(0, Math.ceil((overallEnd - now) / 1000)) : null;
   const overallExpired = overallRemaining === 0;
-  const overallUrgent = overallRemaining !== null && overallRemaining <= 30;
 
   const qRemaining = Math.max(0, Math.ceil((qDeadline - now) / 1000));
   const qExpired = !!current && qRemaining === 0;
@@ -145,24 +144,21 @@ export default function WritingView({
     setQDeadline(Date.now() + QUESTION_SECONDS * 1000);
   }
 
-  const progressAside = (
-    <aside className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+  const progressPanel = (
+    <aside className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 sm:w-56 sm:shrink-0">
       <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">완료 현황</h3>
-      <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
+      <ul className="flex flex-col gap-1.5">
         {progress.map((p) => (
-          <li key={p.userId} className="flex items-center gap-1.5 text-sm">
+          <li key={p.userId} className="flex items-center justify-between text-sm">
             <span>{p.nickname}</span>
             {p.done ? (
-              <span className="text-emerald-500">✓</span>
+              <span className="text-emerald-500">✓ 완료</span>
             ) : (
-              <span className="text-gray-400">…</span>
+              <span className="text-gray-400">작성 중</span>
             )}
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-[11px] text-gray-400">
-        모두 작성 완료되거나 시간이 끝나면 공개 단계로 넘어갑니다.
-      </p>
     </aside>
   );
 
@@ -170,20 +166,14 @@ export default function WritingView({
   if (allSubmitted) {
     return (
       <div className="flex flex-1 flex-col gap-5">
-        <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 dark:border-emerald-900 dark:bg-emerald-950/40">
-          <div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch">
+          <div className="flex flex-1 flex-col justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 dark:border-emerald-900 dark:bg-emerald-950/40">
             <h2 className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">작성 완료</h2>
             <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80">
-              모두 제출했어요. 내가 남긴 내용을 확인하며 기다려 주세요.
+              모두 제출했어요. 내가 남긴 내용을 확인하며 다른 사람을 기다려 주세요.
             </p>
           </div>
-          <div
-            className={`font-mono text-3xl font-bold tabular-nums ${
-              overallUrgent ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'
-            }`}
-          >
-            {overallRemaining === null ? '--:--' : fmt(overallRemaining)}
-          </div>
+          {progressPanel}
         </div>
 
         <div className="flex flex-1 items-stretch gap-3">
@@ -236,8 +226,6 @@ export default function WritingView({
             </svg>
           </button>
         </div>
-
-        {progressAside}
       </div>
     );
   }
@@ -246,8 +234,9 @@ export default function WritingView({
 
   return (
     <div className="flex flex-1 flex-col gap-5">
-      {/* 상단: 이 질문의 개별 남은 시간 */}
-      <div className="flex items-center justify-between rounded-2xl border border-gray-200 bg-white px-5 py-4 dark:border-gray-800 dark:bg-gray-900">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch">
+      {/* 이 질문의 개별 남은 시간 */}
+      <div className="flex flex-1 items-center justify-between rounded-2xl border border-gray-200 bg-white px-5 py-4 dark:border-gray-800 dark:bg-gray-900">
         <div>
           <h2 className="text-sm font-semibold">이 질문 남은 시간</h2>
           <p className="text-xs text-gray-500">
@@ -262,6 +251,8 @@ export default function WritingView({
         >
           {fmt(qRemaining)}
         </div>
+      </div>
+      {progressPanel}
       </div>
 
       {/* 한 화면에 한 질문 */}
@@ -300,9 +291,6 @@ export default function WritingView({
           제출
         </button>
       </div>
-
-      {/* 완료 현황 */}
-      {progressAside}
     </div>
   );
 }
