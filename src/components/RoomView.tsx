@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { RoomState, RoomMode, RoomChatRow } from '@/types/db';
 
-export type Member = { userId: string; nickname: string; isHost: boolean };
+export type Member = { userId: string; nickname: string; isHost: boolean; ready: boolean };
 export type ChatMessage = {
   id: string;
   userId: string;
@@ -41,7 +41,11 @@ export default function RoomView({
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [readyBusy, setReadyBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const me = members.find((m) => m.userId === myUserId);
+  const iAmHost = me?.isHost ?? false;
 
   // 멤버/방 상태 변경 → 서버 컴포넌트 갱신, 채팅 INSERT → 즉시 반영
   useEffect(() => {
@@ -112,6 +116,24 @@ export default function RoomView({
     }
   }
 
+  async function toggleReady() {
+    if (readyBusy || !me) return;
+    setReadyBusy(true);
+    try {
+      const res = await fetch('/api/rooms/ready', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId, ready: !me.ready }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error ?? '처리 실패');
+      }
+    } finally {
+      setReadyBusy(false);
+    }
+  }
+
   async function leave() {
     if (leaving) return;
     setLeaving(true);
@@ -148,22 +170,56 @@ export default function RoomView({
 
       {/* 참가자 */}
       <section className="mb-4">
-        <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
-          참가자 {members.length}/5
-        </h2>
-        <ul className="flex flex-wrap gap-1.5">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-xs font-medium uppercase tracking-wide text-gray-400">
+            참가자 {members.length}/5
+          </h2>
+          {iAmHost ? (
+            <span className="text-xs text-amber-600 dark:text-amber-400">
+              👑 당신이 방장입니다
+            </span>
+          ) : (
+            <button
+              onClick={toggleReady}
+              disabled={readyBusy}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:opacity-50 ${
+                me?.ready
+                  ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  : 'border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-900'
+              }`}
+            >
+              {me?.ready ? '✓ 준비 완료 (해제)' : '준비하기'}
+            </button>
+          )}
+        </div>
+        <ul className="space-y-1.5">
           {members.map((m) => (
             <li
               key={m.userId}
-              className={`rounded-full px-2.5 py-1 text-sm ${
+              className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
                 m.userId === myUserId
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300'
+                  ? 'bg-indigo-50 dark:bg-indigo-950/50'
+                  : 'bg-gray-50 dark:bg-gray-900'
               }`}
             >
-              {m.nickname}
-              {m.isHost && ' 👑'}
-              {m.userId === myUserId && ' (나)'}
+              <span className="font-medium">
+                {m.nickname}
+                {m.isHost && ' 👑'}
+                {m.userId === myUserId && ' (나)'}
+              </span>
+              {m.isHost ? (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                  방장
+                </span>
+              ) : m.ready ? (
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                  ✓ 준비 완료
+                </span>
+              ) : (
+                <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                  대기 중
+                </span>
+              )}
             </li>
           ))}
         </ul>

@@ -37,6 +37,7 @@ export default async function RoomPage({
     userId: m.user_id,
     nickname: userById.get(m.user_id)?.nickname ?? '?',
     isHost: idx === 0,
+    ready: Boolean((m as RoomMemberRow & { ready?: boolean }).ready),
   }));
 
   // 채팅 (테이블이 아직 없으면 빈 배열)

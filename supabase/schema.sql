@@ -38,10 +38,12 @@ create table if not exists public.room_members (
   id        uuid primary key default gen_random_uuid(),
   room_id   int  not null references public.rooms(id) on delete cascade,
   user_id   uuid not null references public.users(id) on delete cascade,
+  ready     boolean not null default false,  -- 준비 상태 (방장 제외)
   joined_at timestamptz not null default now(),
   unique (room_id, user_id)
 );
 -- 가장 먼저 들어온 사람이 방장 (min(joined_at))
+alter table public.room_members add column if not exists ready boolean not null default false;
 
 -- ---------- 게임 라운드별 주제 배정 ----------
 create table if not exists public.assignments (
