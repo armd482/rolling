@@ -113,6 +113,105 @@ export default function WritingView({
     if (ni !== -1) setIdx(ni);
   }
 
+  const allSubmitted = order.every((t) => submitted.has(t.assignmentId));
+
+  const progressAside = (
+    <aside className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+      <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">완료 현황</h3>
+      <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
+        {progress.map((p) => (
+          <li key={p.userId} className="flex items-center gap-1.5 text-sm">
+            <span>{p.nickname}</span>
+            {p.done ? (
+              <span className="text-emerald-500">✓</span>
+            ) : (
+              <span className="text-gray-400">…</span>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-[11px] text-gray-400">
+        모두 작성 완료되거나 시간이 끝나면 공개 단계로 넘어갑니다.
+      </p>
+    </aside>
+  );
+
+  // 내 몫을 모두 제출했으면, 내가 작성한 내용을 한 화면씩(좌우 화살표로) 열람만 한다.
+  if (allSubmitted) {
+    return (
+      <div className="flex flex-1 flex-col gap-5">
+        <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 dark:border-emerald-900 dark:bg-emerald-950/40">
+          <div>
+            <h2 className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">작성 완료</h2>
+            <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80">
+              모두 제출했어요. 내가 남긴 내용을 확인하며 기다려 주세요.
+            </p>
+          </div>
+          <div
+            className={`font-mono text-3xl font-bold tabular-nums ${
+              urgent ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'
+            }`}
+          >
+            {remaining === null ? '--:--' : fmt(remaining)}
+          </div>
+        </div>
+
+        <div className="flex flex-1 items-stretch gap-3">
+          <button
+            onClick={() => setIdx((i) => Math.max(0, i - 1))}
+            disabled={idx === 0}
+            aria-label="이전"
+            className="flex w-12 shrink-0 items-center justify-center rounded-2xl border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-30 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-gray-900"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+
+          <div className="flex flex-1 flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium uppercase tracking-wide text-gray-400">
+                내가 작성한 내용 {idx + 1} / {order.length}
+              </span>
+              <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
+                {current.nickname}
+              </span>
+            </div>
+            <p className="whitespace-pre-wrap text-base font-medium text-gray-800 dark:text-gray-100">
+              {current.topic}
+            </p>
+            <div className="flex-1 whitespace-pre-wrap break-words rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200">
+              {drafts[current.assignmentId]}
+            </div>
+            <div className="flex justify-center gap-1.5">
+              {order.map((t, i) => (
+                <span
+                  key={t.assignmentId}
+                  className={`h-2 w-2 rounded-full ${
+                    i === idx ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-700'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          <button
+            onClick={() => setIdx((i) => Math.min(order.length - 1, i + 1))}
+            disabled={idx === order.length - 1}
+            aria-label="다음"
+            className="flex w-12 shrink-0 items-center justify-center rounded-2xl border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-30 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-gray-900"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </button>
+        </div>
+
+        {progressAside}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-5">
       {/* 상단 타이머 */}
@@ -213,24 +312,7 @@ export default function WritingView({
       </div>
 
       {/* 완료 현황 */}
-      <aside className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-        <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">완료 현황</h3>
-        <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
-          {progress.map((p) => (
-            <li key={p.userId} className="flex items-center gap-1.5 text-sm">
-              <span>{p.nickname}</span>
-              {p.done ? (
-                <span className="text-emerald-500">✓</span>
-              ) : (
-                <span className="text-gray-400">…</span>
-              )}
-            </li>
-          ))}
-        </ul>
-        <p className="mt-2 text-[11px] text-gray-400">
-          모두 작성 완료되거나 시간이 끝나면 공개 단계로 넘어갑니다.
-        </p>
-      </aside>
+      {progressAside}
     </div>
   );
 }
