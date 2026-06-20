@@ -17,7 +17,7 @@ export default function FinishedView({
     <div className="flex flex-1 flex-col gap-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold">🎉 게임 종료</h2>
+          <h2 className="font-hand text-3xl text-indigo-600">🎉 게임 종료</h2>
           <p className="text-sm text-gray-500">전체 결과를 확인하세요.</p>
         </div>
         {iAmHost && (
@@ -36,26 +36,23 @@ export default function FinishedView({
           return (
             <div
               key={t.assignmentId}
-              className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"
+              className="paper flex flex-col gap-3 rounded-xl border border-gray-200 p-4 shadow-sm"
             >
               <div>
-                <p className="text-xs text-gray-400">{t.nickname} 님에게</p>
-                <h3 className="font-semibold">{t.topic}</h3>
+                <p className="font-hand text-xl text-indigo-600">To. {t.nickname}</p>
+                <h3 className="font-semibold text-gray-800">{t.topic}</h3>
               </div>
               {msgs.length === 0 ? (
                 <p className="text-sm text-gray-400">작성된 메시지가 없습니다.</p>
               ) : (
                 <ul className="flex flex-col gap-2">
                   {msgs.map((m, i) => (
-                    <li
-                      key={i}
-                      className="rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-gray-950"
-                    >
-                      <p className="whitespace-pre-wrap break-words">
+                    <li key={i} className="lined rounded-lg border border-gray-100 px-3 py-2">
+                      <p className="whitespace-pre-wrap break-words font-hand text-xl text-gray-700">
                         {m.content || <span className="text-gray-400">(내용 없음)</span>}
                       </p>
-                      <p className="mt-1 text-right text-xs text-gray-400">
-                        — {m.writerNickname ?? '익명'}
+                      <p className="mt-1 text-right font-hand text-base text-gray-500">
+                        from. {m.writerNickname ?? '익명'}
                       </p>
                     </li>
                   ))}

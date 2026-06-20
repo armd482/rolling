@@ -200,7 +200,7 @@ export default function WritingView({
             <p className="whitespace-pre-wrap text-base font-medium text-gray-800 dark:text-gray-100">
               {current.topic}
             </p>
-            <div className="flex-1 whitespace-pre-wrap break-words rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200">
+            <div className="lined flex-1 whitespace-pre-wrap break-words rounded-lg border border-gray-100 px-3 py-2 font-hand text-2xl text-gray-700">
               {drafts[current.assignmentId]}
             </div>
             <div className="flex justify-center gap-1.5">
@@ -266,9 +266,7 @@ export default function WritingView({
           </span>
         </div>
 
-        <p className="whitespace-pre-wrap text-base font-medium text-gray-800 dark:text-gray-100">
-          {current.topic}
-        </p>
+        <p className="whitespace-pre-wrap font-hand text-2xl text-gray-800">{current.topic}</p>
 
         <textarea
           value={value}

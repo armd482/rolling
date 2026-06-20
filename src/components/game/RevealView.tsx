@@ -67,20 +67,20 @@ export default function RevealView({
 
       {/* 카드 */}
       <div className="flex flex-1 flex-col items-center justify-center">
-        <div className="w-full max-w-2xl rounded-3xl border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <p className="mb-1 text-sm text-gray-400">{target.nickname} 님에게</p>
-          <h2 className="mb-6 text-xl font-bold">{target.topic}</h2>
+        <div className="lined relative w-full max-w-2xl rounded-2xl border border-gray-200 p-8 shadow-md">
+          <p className="mb-1 font-hand text-2xl text-indigo-600">To. {target.nickname}</p>
+          <h2 className="mb-6 text-2xl font-bold text-gray-800">{target.topic}</h2>
           {msg ? (
             <>
-              <p className="min-h-[8rem] whitespace-pre-wrap break-words text-lg leading-relaxed">
+              <p className="min-h-[8rem] whitespace-pre-wrap break-words font-hand text-3xl leading-relaxed text-gray-700">
                 {msg.content || <span className="text-gray-400">(내용 없음)</span>}
               </p>
-              <p className="mt-6 text-right text-sm text-gray-500">
-                — {msg.writerNickname ?? '익명'}
+              <p className="mt-6 text-right font-hand text-2xl text-gray-500">
+                from. {msg.writerNickname ?? '익명'}
               </p>
             </>
           ) : (
-            <p className="min-h-[8rem] text-gray-400">아직 작성된 메시지가 없습니다.</p>
+            <p className="min-h-[8rem] font-hand text-2xl text-gray-400">아직 작성된 메시지가 없습니다.</p>
           )}
         </div>
       </div>
