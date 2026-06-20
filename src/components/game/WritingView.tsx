@@ -189,17 +189,11 @@ export default function WritingView({
           </button>
 
           <div className="flex flex-1 flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium uppercase tracking-wide text-gray-400">
-                내가 작성한 내용 {idx + 1} / {order.length}
-              </span>
-              <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
-                {current.nickname}
-              </span>
+            <div className="text-xs font-medium uppercase tracking-wide text-gray-400">
+              내가 작성한 내용 {idx + 1} / {order.length}
             </div>
-            <p className="whitespace-pre-wrap text-base font-medium text-gray-800 dark:text-gray-100">
-              {current.topic}
-            </p>
+            <p className="font-hand text-3xl text-indigo-600">💌 {current.nickname} 님에게</p>
+            <p className="whitespace-pre-wrap font-hand text-2xl text-gray-800">{current.topic}</p>
             <div className="lined flex-1 whitespace-pre-wrap break-words rounded-lg border border-gray-100 px-3 py-2 font-hand text-2xl text-gray-700">
               {drafts[current.assignmentId]}
             </div>
@@ -257,13 +251,13 @@ export default function WritingView({
 
       {/* 한 화면에 한 질문 */}
       <div className="flex flex-1 flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium uppercase tracking-wide text-gray-400">
-            질문 {idx + 1} / {order.length}
-          </span>
-          <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
-            {current.nickname}
-          </span>
+        <div className="text-xs font-medium uppercase tracking-wide text-gray-400">
+          질문 {idx + 1} / {order.length}
+        </div>
+
+        {/* 누구에게 쓰는 글인지 크게 보여준다 */}
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-center">
+          <span className="font-hand text-3xl text-indigo-600">💌 {current.nickname} 님에게</span>
         </div>
 
         <p className="whitespace-pre-wrap font-hand text-2xl text-gray-800">{current.topic}</p>
