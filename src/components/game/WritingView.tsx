@@ -140,8 +140,12 @@ export default function WritingView({
       next.add(current.assignmentId);
       return next;
     });
+    // confirm 창이 열려 있는 동안 흐른 시간 때문에 now 가 뒤처지면, 다음 질문 타이머가
+    // 잠깐 2:0x 로 떴다가 2:00 으로 보정된다. now 와 마감을 같은 기준 시각으로 함께 갱신해 방지.
+    const t = Date.now();
     setIdx((i) => Math.min(order.length - 1, i + 1));
-    setQDeadline(Date.now() + QUESTION_SECONDS * 1000);
+    setQDeadline(t + QUESTION_SECONDS * 1000);
+    setNow(t);
   }
 
   const progressPanel = (
