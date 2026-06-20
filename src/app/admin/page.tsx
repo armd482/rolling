@@ -68,10 +68,10 @@ export default async function AdminPage() {
   const totalMessages = (messages ?? []).length;
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-8 sm:px-8 lg:px-10">
-      <header className="mb-8 flex items-center justify-between">
+    <main className="readable mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-8 sm:px-8 lg:px-10">
+      <header className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 pb-5">
         <div>
-          <h1 className="text-2xl font-bold">관리자 · 전체 결과</h1>
+          <h1 className="text-2xl font-bold text-gray-800">관리자 · 전체 결과</h1>
           <p className="mt-1 text-sm text-gray-500">
             배정 {entries.length}건 · 작성 {totalMessages}건
           </p>
@@ -87,50 +87,60 @@ export default async function AdminPage() {
           아직 저장된 결과가 없습니다.
         </p>
       ) : (
-        <div className="flex flex-col gap-10">
+        <div className="flex flex-col gap-12">
           {rooms.map((roomId) => {
             const rounds = [...byRoom.get(roomId)!.keys()].sort((a, b) => a - b);
             return (
               <section key={roomId}>
-                <h2 className="mb-4 text-lg font-semibold">{roomId}번 방</h2>
-                <div className="flex flex-col gap-6">
+                <h2 className="mb-5 flex items-center gap-2 text-xl font-bold text-gray-800">
+                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-md bg-indigo-600 px-2 text-sm font-bold text-white">
+                    {roomId}
+                  </span>
+                  번 방
+                </h2>
+                <div className="flex flex-col gap-8">
                   {rounds.map((round) => (
                     <div key={round}>
-                      <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-400">
+                      <h3 className="mb-3 inline-block rounded-full bg-gray-100 px-3 py-1 text-sm font-semibold text-gray-600">
                         {round}라운드
                       </h3>
-                      <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="grid gap-4 md:grid-cols-2">
                         {byRoom
                           .get(roomId)!
                           .get(round)!
                           .map((e) => (
                             <article
                               key={e.assignmentId}
-                              className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"
+                              className="overflow-hidden rounded-xl border border-gray-200 bg-white"
                             >
-                              <div className="flex items-baseline justify-between gap-2">
-                                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
+                              <div className="border-b border-gray-100 bg-gray-50 px-4 py-3">
+                                <div className="mb-1 flex items-center justify-between">
+                                  <span className="text-xs font-medium text-gray-500">받는 사람</span>
+                                  <span className="text-xs text-gray-400">
+                                    답변 {e.messages.length}개
+                                  </span>
+                                </div>
+                                <p className="text-base font-bold text-indigo-700">
                                   {e.targetNickname}
-                                </span>
-                                <span className="text-xs text-gray-400">
-                                  {e.messages.length}개 작성
-                                </span>
+                                </p>
+                                <p className="mt-1 whitespace-pre-wrap text-[15px] font-medium text-gray-700">
+                                  {e.topic}
+                                </p>
                               </div>
-                              <p className="whitespace-pre-wrap text-sm font-medium text-gray-800 dark:text-gray-100">
-                                {e.topic}
-                              </p>
-                              <ul className="flex flex-col gap-2 border-t border-gray-100 pt-3 dark:border-gray-800">
+                              <ul className="divide-y divide-gray-100">
                                 {e.messages.length === 0 ? (
-                                  <li className="text-xs text-gray-400">작성된 내용이 없습니다.</li>
+                                  <li className="px-4 py-3 text-sm text-gray-400">
+                                    작성된 내용이 없습니다.
+                                  </li>
                                 ) : (
                                   e.messages.map((m, i) => (
-                                    <li key={i} className="flex flex-col gap-0.5">
-                                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                                    <li key={i} className="px-4 py-3">
+                                      <p className="mb-0.5 text-xs font-semibold text-gray-500">
                                         {m.writerNickname}
-                                      </span>
-                                      <span className="whitespace-pre-wrap break-words text-sm">
+                                      </p>
+                                      <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-gray-800">
                                         {m.content}
-                                      </span>
+                                      </p>
                                     </li>
                                   ))
                                 )}

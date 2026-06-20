@@ -58,6 +58,12 @@ body {
 
 /* ---- 종이/편지지 유틸 ---- */
 
+/* 정보 위주 화면(관리자 등)용 — 읽기 좋은 고딕 */
+.readable {
+  font-family: "Apple SD Gothic Neo", "Malgun Gothic", system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+}
+
 /* 깨끗한 종이 카드 */
 .paper {
   background-color: #fffdf7;

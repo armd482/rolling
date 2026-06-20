@@ -9,7 +9,7 @@ export default async function AdminLoginPage() {
   if (await getAdminSession()) redirect('/admin');
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center justify-center px-6 py-8">
+    <main className="readable mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center justify-center px-6 py-8">
       <div className="flex w-full max-w-sm flex-col items-center gap-6">
         <div className="text-center">
           <h1 className="text-2xl font-bold">관리자 로그인</h1>
