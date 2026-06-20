@@ -64,18 +64,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: '배정 정보가 없습니다.' }, { status: 409 });
   }
 
-  // 각 대상의 메시지 수 (페이지 수, 최소 1)
+  // 각 대상의 메시지 수
   const aids = targets.map((t) => t.id);
   const { data: msgs } = await supabase
     .from('messages')
     .select('assignment_id')
     .in('assignment_id', aids);
-  const pageCount = new Map<string, number>();
-  for (const t of targets) pageCount.set(t.id, 0);
+  const msgCount = new Map<string, number>();
+  for (const t of targets) msgCount.set(t.id, 0);
   for (const m of msgs ?? []) {
-    pageCount.set(m.assignment_id, (pageCount.get(m.assignment_id) ?? 0) + 1);
+    msgCount.set(m.assignment_id, (msgCount.get(m.assignment_id) ?? 0) + 1);
   }
-  const pagesOf = (idx: number) => Math.max(1, pageCount.get(targets[idx].id) ?? 0);
+  // 페이지 = 대상 소개(0번) 1장 + 답변 수. 답변이 없어도 소개 1장.
+  const pagesOf = (idx: number) => 1 + (msgCount.get(targets[idx].id) ?? 0);
 
   const ti0 = room.current_target_idx;
   const pg0 = room.reveal_page;

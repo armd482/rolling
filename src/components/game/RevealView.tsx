@@ -46,9 +46,11 @@ export default function RevealView({
   }
 
   const msgs = messagesByAssignment[target.assignmentId] ?? [];
-  const total = Math.max(1, msgs.length);
-  const page = Math.min(revealPage, total - 1);
-  const msg: RevealMessage | undefined = msgs[page];
+  // 페이지 0 = 대상 소개, 페이지 1.. = (주제 + 답변)
+  const total = msgs.length + 1;
+  const page = Math.min(Math.max(0, revealPage), total - 1);
+  const isIntro = page === 0;
+  const msg: RevealMessage | undefined = isIntro ? undefined : msgs[page - 1];
 
   const isFirst = currentTargetIdx === 0 && page === 0;
   const isLastTarget = currentTargetIdx === targets.length - 1;
@@ -62,25 +64,37 @@ export default function RevealView({
         <span>
           대상 {currentTargetIdx + 1} / {targets.length}
         </span>
-        <span>{msgs.length > 0 ? `${page + 1} / ${total} 장` : '메시지 없음'}</span>
+        <span>{isIntro ? '주인공 소개' : `답변 ${page} / ${msgs.length}`}</span>
       </div>
 
       {/* 카드 */}
       <div className="flex flex-1 flex-col items-center justify-center">
         <div className="lined relative w-full max-w-2xl rounded-2xl border border-gray-200 p-8 shadow-md">
-          <p className="mb-1 font-hand text-2xl text-indigo-600">To. {target.nickname}</p>
-          <h2 className="mb-6 text-2xl font-bold text-gray-800">{target.topic}</h2>
-          {msg ? (
-            <>
-              <p className="min-h-[8rem] whitespace-pre-wrap break-words font-hand text-3xl leading-relaxed text-gray-700">
-                {msg.content || <span className="text-gray-400">(내용 없음)</span>}
-              </p>
-              <p className="mt-6 text-right font-hand text-2xl text-gray-500">
-                from. {msg.writerNickname ?? '익명'}
-              </p>
-            </>
+          {isIntro ? (
+            <div className="flex min-h-[12rem] flex-col items-center justify-center gap-3 text-center">
+              <p className="font-hand text-2xl text-gray-500">이번 주인공은</p>
+              <p className="font-hand text-6xl text-indigo-600">{target.nickname}</p>
+              <p className="font-hand text-2xl text-gray-500">님에게 도착한 롤링페이퍼 💌</p>
+            </div>
           ) : (
-            <p className="min-h-[8rem] font-hand text-2xl text-gray-400">아직 작성된 메시지가 없습니다.</p>
+            <>
+              <p className="mb-1 font-hand text-2xl text-indigo-600">To. {target.nickname}</p>
+              <h2 className="mb-6 text-2xl font-bold text-gray-800">{target.topic}</h2>
+              {msg ? (
+                <>
+                  <p className="min-h-[8rem] whitespace-pre-wrap break-words font-hand text-3xl leading-relaxed text-gray-700">
+                    {msg.content || <span className="text-gray-400">(내용 없음)</span>}
+                  </p>
+                  <p className="mt-6 text-right font-hand text-2xl text-gray-500">
+                    from. {msg.writerNickname ?? '익명'}
+                  </p>
+                </>
+              ) : (
+                <p className="min-h-[8rem] font-hand text-2xl text-gray-400">
+                  아직 작성된 메시지가 없습니다.
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>
