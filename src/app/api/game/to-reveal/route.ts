@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { getValidSession } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { effectiveHostId } from '@/lib/host';
-import { revealDeadline } from '@/lib/game';
 
 // 작성 단계 → 공개 단계 전환. 마감 시각이 지났거나 전원이 작성을 완료하면 전환한다.
 // 어느 클라이언트가 호출해도 안전하도록 조건부 UPDATE 로 1회만 적용.
@@ -66,8 +65,8 @@ export async function POST(req: Request) {
       state: 'revealing',
       current_target_idx: 0,
       reveal_page: 0,
-      // 공개 단계 자동진행(stall) 마감
-      phase_ends_at: revealDeadline(),
+      // 공개 단계는 방장(접속 중 유효 방장) 수동 조작만 사용 — stall 자동진행 없음
+      phase_ends_at: null,
     })
     .eq('id', id)
     .eq('state', 'writing');
