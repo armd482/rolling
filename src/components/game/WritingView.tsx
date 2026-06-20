@@ -329,6 +329,7 @@ export default function WritingView({
         </div>
 
         <textarea
+          aria-label="답변 입력"
           value={value}
           disabled={inputDisabled}
           onChange={(e) => {
@@ -343,6 +344,7 @@ export default function WritingView({
 
         <button
           onClick={submit}
+          aria-label="제출"
           disabled={inputDisabled || !value.trim()}
           className="self-end rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
         >

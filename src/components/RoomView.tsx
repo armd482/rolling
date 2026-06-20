@@ -495,6 +495,7 @@ export default function RoomView({
       <form onSubmit={send} className="flex items-end gap-2 border-t border-white/10 pt-4 mt-3">
         <textarea
           ref={chatInputRef}
+          aria-label="채팅 메시지 입력"
           value={text}
           onChange={(e) => {
             setText(e.target.value);
@@ -516,6 +517,7 @@ export default function RoomView({
         />
         <button
           type="submit"
+          aria-label="메시지 전송"
           disabled={!text.trim()}
           className="h-10 shrink-0 rounded-2xl bg-blue-600 px-4 text-xs font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"
         >
@@ -543,6 +545,7 @@ export default function RoomView({
         </div>
         <button
           onClick={leave}
+          aria-label="방 나가기"
           disabled={leaving || gameInProgress}
           title={gameInProgress ? '게임 진행 중에는 나갈 수 없습니다.' : undefined}
           className="rounded-2xl border border-rose-200/50 bg-rose-50/40 px-4 py-2 text-sm font-semibold text-rose-600 backdrop-blur-sm transition hover:bg-rose-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
@@ -588,6 +591,7 @@ export default function RoomView({
               {iAmHost && (
                 <button
                   onClick={resetGame}
+                  aria-label="다시 시작하기"
                   className="shrink-0 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 active:bg-blue-800"
                 >
                   다시 시작하기
@@ -630,6 +634,7 @@ export default function RoomView({
                     <div className="flex flex-col items-end gap-1.5">
                       <button
                         onClick={start}
+                        aria-label="게임 시작하기"
                         disabled={!allReady || starting}
                         className={`rounded-2xl px-6 py-3 text-sm font-bold shadow-md transition-all ${
                           allReady && !starting
@@ -648,6 +653,7 @@ export default function RoomView({
                   ) : (
                     <button
                       onClick={toggleReady}
+                      aria-label="준비 상태 전환"
                       className={`rounded-2xl px-6 py-3 text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] ${
                         myReady
                           ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-100'
@@ -712,6 +718,7 @@ export default function RoomView({
                         {iAmHost && !m.isHost && (
                           <button
                             onClick={() => kick(m.userId)}
+                            aria-label={`${m.nickname} 강퇴`}
                             className="rounded-xl border border-rose-200 bg-rose-50/50 px-2.5 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-500 hover:text-white"
                           >
                             강퇴
@@ -759,6 +766,7 @@ export default function RoomView({
                       key={opt.value}
                       type="button"
                       onClick={() => changeMode(opt.value)}
+                      aria-label={`${opt.label} 선택`}
                       disabled={!iAmHost}
                       className={`flex flex-col gap-2 rounded-2xl border p-4 text-left transition-all ${
                         active

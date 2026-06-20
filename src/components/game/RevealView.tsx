@@ -64,6 +64,7 @@ export default function RevealView({
               key={t.assignmentId}
               type="button"
               onClick={() => onJump(i)}
+              aria-label={`${t.nickname} 결과로 이동`}
               className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
                 i === currentTargetIdx
                   ? 'border-rose-300 bg-rose-500 text-white shadow-sm'

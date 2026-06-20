@@ -48,6 +48,7 @@ export default function AdminResults({ targets }: { targets: AdminTarget[] }) {
           type="button"
           role="switch"
           aria-checked={maskAnonymous}
+          aria-label="익명 모드 작성자 가리기 전환"
           onClick={() => setMaskAnonymous((v) => !v)}
           className="inline-flex shrink-0 items-center gap-2.5"
         >

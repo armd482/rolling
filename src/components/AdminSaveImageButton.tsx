@@ -102,6 +102,7 @@ export default function AdminSaveImageButton() {
   return (
     <button
       onClick={save}
+      aria-label="이미지 저장"
       disabled={busy}
       className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
     >

@@ -123,6 +123,7 @@ export default function LoginForm({ suggestions }: { suggestions: Suggestion[] }
         <div className="relative">
           <input
             id="email"
+            aria-label="이메일 주소"
             type="email"
             autoComplete="off"
             value={email}
@@ -149,6 +150,7 @@ export default function LoginForm({ suggestions }: { suggestions: Suggestion[] }
                 <li key={s.email}>
                   <button
                     type="button"
+                    aria-label={`${s.nickname} 선택`}
                     ref={(el) => {
                       itemRefs.current[idx] = el;
                     }}
@@ -184,6 +186,7 @@ export default function LoginForm({ suggestions }: { suggestions: Suggestion[] }
 
       <button
         type="submit"
+        aria-label="로그인"
         disabled={loading}
         className="w-full rounded-xl bg-slate-900 py-3 font-semibold text-white transition hover:bg-slate-800 active:scale-[0.99] disabled:opacity-60 disabled:pointer-events-none"
       >

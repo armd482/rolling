@@ -22,6 +22,7 @@ export default function AdminLogoutButton() {
   return (
     <button
       onClick={logout}
+      aria-label="로그아웃"
       disabled={busy}
       className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"
     >

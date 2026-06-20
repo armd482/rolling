@@ -31,6 +31,7 @@ export default function AdminResetButton() {
   return (
     <button
       onClick={reset}
+      aria-label="전체 초기화"
       disabled={busy}
       className="rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900 dark:bg-red-950/50 dark:text-red-400 dark:hover:bg-red-950"
     >

@@ -110,8 +110,9 @@ export default function RoomList({
           >
             관리자 모드
           </Link>
-          <button 
-            onClick={logout} 
+          <button
+            onClick={logout}
+            aria-label="로그아웃"
             className="rounded-xl border border-rose-200/50 bg-rose-50/40 px-3.5 py-1.5 text-xs font-semibold text-rose-600 backdrop-blur-sm transition hover:bg-rose-500 hover:text-white"
           >
             로그아웃
@@ -207,6 +208,7 @@ export default function RoomList({
                 {mine ? (
                   <button
                     onClick={() => router.push(`/rooms/${room.id}`)}
+                    aria-label={`${room.id}번 방으로 다시 입장`}
                     className="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 active:bg-blue-800"
                   >
                     다시 입장하기
@@ -214,6 +216,7 @@ export default function RoomList({
                 ) : (
                   <button
                     onClick={() => join(room.id)}
+                    aria-label={`${room.id}번 방 입장`}
                     disabled={busy || full || inAnyRoom || inProgress}
                     className={`w-full rounded-2xl py-3 text-sm font-bold text-white transition-all ${
                       inProgress || full || inAnyRoom

@@ -43,6 +43,7 @@ export default function AdminLoginForm() {
         </label>
         <input
           id="admin-username"
+          aria-label="아이디"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           autoComplete="username"
@@ -56,6 +57,7 @@ export default function AdminLoginForm() {
         </label>
         <input
           id="admin-password"
+          aria-label="비밀번호"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -66,6 +68,7 @@ export default function AdminLoginForm() {
       {error && <p className="text-sm text-red-500">{error}</p>}
       <button
         type="submit"
+        aria-label="로그인"
         disabled={busy || !username || !password}
         className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
       >

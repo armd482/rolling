@@ -54,6 +54,7 @@ export default function FinishedView({
               key={t.assignmentId}
               type="button"
               onClick={() => open(i)}
+              aria-label={`${t.nickname} 결과 보기`}
               className="glass-card flex h-[28rem] flex-col gap-4 rounded-3xl p-6 text-left transition hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
             >
               <div className="shrink-0 border-b border-gray-150/40 pb-3">
