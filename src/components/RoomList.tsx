@@ -85,7 +85,7 @@ export default function RoomList({
     <main className="mx-auto w-full max-w-6xl px-6 py-8 sm:px-8 lg:px-10">
       <header className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">방 선택</h1>
+          <h1 className="font-hand text-4xl text-indigo-600">방 선택</h1>
           <p className="text-sm text-gray-500">
             <span className="font-medium text-indigo-600">{myNickname}</span> 님, 입장할 방을 고르세요.
           </p>

@@ -366,7 +366,7 @@ export default function RoomView({
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-8 sm:px-8 lg:px-10">
       <header className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold">{roomId}번 방</h1>
+          <h1 className="font-hand text-4xl text-indigo-600">{roomId}번 방</h1>
           <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
             {STATE_LABEL[state]} · {mode === 'anonymous' ? '익명' : '일반'}
           </span>
