@@ -18,10 +18,8 @@
 ## 익명 모드 + 긴 답변 레이아웃 (추가 검증)
 - ✅ **익명 모드(E6)**: rooms.mode=anonymous + revealing 로 재현. 공개 카드에 **작성자(from) 미표시** 확인(실명 때 보이던 "from. OO"가 사라짐). 상단 배지 "공개 중 · 익명 모드".
 - ✅ **중간 길이 답변**: 긴 문단(공백 포함) 줄바꿈·문단 간격 정상, 카드 내 표시. 공백 없는 한글 초장문도 CJK 줄바꿈으로 가로 오버플로 없음.
-- 🐛 **[버그/레이아웃] 긴 답변 클리핑**: ~1920자(쓰기 한도 2000자 내) 답변이 **공개(reveal) 카드 하단에서 잘림 + 스크롤 없음** → 뒷부분 읽기 불가.
-  - 위치: RevealView 카드 답변 영역. 컨테이너가 `flex min-h-0 ... overflow-y: hidden` 이라 카드 높이 초과분이 잘림.
-  - 제안: 답변 영역에 `overflow-y:auto`(스크롤) 부여 또는 폰트/높이 자동 조정. (관리자 결과 저장 이미지 분할과 별개로 화면 표시 한정 이슈)
-  - 참고: `word-break:normal/overflow-wrap:normal` 이라 공백 없는 **라틴** 초장문은 가로 오버플로 가능(한글은 안전).
+- ✅ **[정정됨] 공개(reveal) 긴 답변**: 처음엔 "잘림"으로 봤으나 오진이었음 — 답변 영역 안쪽에 `overflow-y-auto`([RevealView.tsx:120](../src/components/game/RevealView.tsx))가 있어 **스크롤됨**(맥OS 오버레이 스크롤바라 안 보였을 뿐). 단, 긴 답변 실사용 스크롤은 다음 세션에서 1회 더 확인 권장(아래 ★).
+  - 참고: `word-break:normal/overflow-wrap:normal` 이라 공백 없는 **라틴** 초장문은 가로 오버플로 가능(한글은 CJK 줄바꿈으로 안전).
 - 메모: 레이아웃 테스트 위해 시오에게 온 메시지 2건의 content를 길게 수정함(원본은 이번 세션의 테스트 답변 문자열이라 사용자 데이터 아님). assignments/주제는 그대로 유지.
 
 ## 주제 풀 DB 이관 + 긴 주제 레이아웃 (구현·검증)
@@ -68,6 +66,27 @@
 - ⚠️ (도구 메모) 실제 Chrome에서 computer `type`로 한글 입력 후 Enter 시 IME 조합 때문에 전송 안 됨 → form_input+전송버튼으로 전송 성공. 앱 버그 아님(Playwright 피어는 Enter로 정상 전송). 단 **사람이 한글 입력 후 Enter 전송 동작은 실제 입력으로 1회 확인 권장**(C10d).
 - ⚠️ **입장 순서 주의**: 방장(시오)이 반드시 먼저 입장해야 effectiveHostId=시오. 피어가 먼저 들어가면 피어가 방장이 되어 흐름 깨짐. → 런북: 시오 입장 확인 후 피어 기동.
 
-## TODO (다음 단계)
-- C 대기실(준비 수신·시작조건·공개모드·채팅), D 작성, E 공개(이전/다음·연타·바로가기·익명실명), F 종료, G 반응형.
-- 피어 기동: `node e2e/peers_runner.mjs` (백그라운드) → PEERS_READY 후 방장 시작.
+## 남은 테스트 (다음 세션에서 이어서)
+
+### ★ 긴 내용 레이아웃 (모든 참가자가 긴 답변 작성한 상태에서)
+> peers_runner.mjs 는 이미 긴 답변(약 400자+)을 제출하도록 갱신됨. host(시오)도 긴 답변 2개 작성 필요.
+> 직전엔 host Q2 작성 중 rate limit 으로 중단됨 → 여기부터 재개.
+- [ ] **작성 열람 페이지**(WritingView allSubmitted, "내가 남긴 메시지 카드"): 긴 답변에서 이전/다음 카드 이동 + 카드 내부 스크롤([WritingView.tsx:245](../src/components/game/WritingView.tsx) overflow-y-auto) 정상 표시
+- [ ] **공개(reveal) 카드**: 긴 답변이 [RevealView.tsx:120](../src/components/game/RevealView.tsx) `overflow-y-auto` 로 스크롤되는지 실사용 확인(스크롤바가 안 보여도 스크롤 가능해야 함)
+- [ ] **종료 결과 카드 + 모달**(FinishedView): 긴 답변 표시·스크롤, 모달 이전/다음 답변
+- [ ] **반응형**(mobile 375 / tablet 768)에서 긴 답변·긴 주제 깨짐 없는지
+- 참고: 긴 **주제**(70자+) 작성 화면 클리핑은 이미 수정·검증 완료(주제 폰트 축소 + 카드 overflow-y-auto).
+
+### 그 외 미검증 (위 "미검증/후속" 섹션과 동일)
+- A2 미등록 거부 · A4 active_sid 단일세션 · A5 로그아웃
+- B4 정원 초과 · B6 prune · C7 lobby 나가기 · C8 강퇴 실제 클릭 · C9 방장 승계
+- D5 작성 마감 자동전환 · D6 진행 중 나가기 차단 · E5 비방장 동기화(피어 헤드리스라 화면 미확인) · E10 reveal stall
+- F4 다시하기 클릭 · F5 종료 후 나가기 · H1 새로고침 복원 · H2 방장이탈 처리 · H3 진행 중 입장 차단
+- C10d 사람이 한글 입력 후 Enter 전송(IME) 1회 실제 확인
+
+### 런북(재개 절차)
+1. `resetTestRoom(7)` 또는 reset 스크립트로 7번 방 lobby 정리
+2. host(시오) 먼저 `/rooms`→7번 방 입장 (반드시 먼저! 안 그러면 피어가 방장)
+3. `node e2e/peers_runner.mjs` 백그라운드 → `PEERS_READY` 대기(피어가 입장·준비·로비채팅·긴답변 자동)
+4. host "게임 시작하기" → host도 긴 답변 2개 제출(confirm 자동수락: `window.confirm=()=>true`) → 전원완료 자동 공개
+5. 위 ★ 항목 점검
