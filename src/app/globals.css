@@ -1,22 +1,48 @@
 @import "tailwindcss";
 
+/* 종이 테마를 OS 설정과 무관하게 일관 적용하기 위해 dark: 변형을 클래스 기반으로 바꾼다.
+   (.dark 클래스를 절대 붙이지 않으므로 기존 dark:* 유틸은 모두 비활성화된다.) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fbf3e0; /* 따뜻한 크림 종이 */
+  --foreground: #4a4036; /* 잉크 같은 짙은 갈색 */
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: "Gaegu", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-hand: "Nanum Pen Script", "Gaegu", cursive;
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* 팔레트를 편지지/세피아 톤으로 재정의 → 기존 indigo/gray 유틸이 자동으로 따뜻해진다.
+   indigo = 편지 빨강 포인트, gray = 종이 세피아. */
+@theme {
+  --color-indigo-50: #fdeee9;
+  --color-indigo-100: #f9d8cf;
+  --color-indigo-200: #f1b6a8;
+  --color-indigo-300: #e69180;
+  --color-indigo-400: #db6f5b;
+  --color-indigo-500: #cf5544;
+  --color-indigo-600: #c0392b;
+  --color-indigo-700: #a32f23;
+  --color-indigo-800: #84281e;
+  --color-indigo-900: #6b231b;
+  --color-indigo-950: #43130e;
+
+  --color-gray-50: #fbf5e9;
+  --color-gray-100: #f4ebd9;
+  --color-gray-200: #e8dcc4;
+  --color-gray-300: #d9c8a9;
+  --color-gray-400: #b3a487;
+  --color-gray-500: #8d7f66;
+  --color-gray-600: #6f6350;
+  --color-gray-700: #564c3d;
+  --color-gray-800: #3f372b;
+  --color-gray-900: #2d271e;
+  --color-gray-950: #1d1813;
 }
 
 html {
@@ -24,7 +50,40 @@ html {
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  font-size: 1.05rem;
+}
+
+/* ---- 종이/편지지 유틸 ---- */
+
+/* 깨끗한 종이 카드 */
+.paper {
+  background-color: #fffdf7;
+}
+
+/* 줄노트(편지지) 질감 */
+.lined {
+  background-color: #fffdf7;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    #fffdf7 0,
+    #fffdf7 31px,
+    #cfe3f2 31px,
+    #cfe3f2 32px
+  );
+}
+
+/* 마스킹테이프 한 조각 (카드 위에 ::before 로 붙임) */
+.tape::before {
+  content: "";
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  width: 86px;
+  height: 22px;
+  transform: translateX(-50%) rotate(-3deg);
+  background: rgba(226, 199, 145, 0.55);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
