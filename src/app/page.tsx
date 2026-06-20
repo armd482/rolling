@@ -18,17 +18,27 @@ export default async function Home({
   const suggestions = USERS.map((u) => ({ email: u.email, nickname: u.nickname }));
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-8 px-6">
-      <div className="text-center">
-        <h1 className="font-hand text-6xl text-indigo-600">롤링페이퍼</h1>
-        <p className="mt-1 text-base text-gray-500">등록된 이메일로 입장하세요.</p>
+    <main className="relative flex min-h-screen flex-col items-center justify-center px-6 py-12 bg-slate-50">
+      <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
+        <div className="mb-6 text-center">
+          <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">
+            롤링페이퍼
+          </h1>
+          <p className="mt-1.5 text-xs font-semibold text-gray-500">
+            동료들과 함께하는 온라인 롤링페이퍼 서비스
+          </p>
+        </div>
+
+        {kicked && (
+          <div className="mb-5 flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-xs text-slate-700 border border-slate-200">
+            <span>로그인 세션이 만료되었습니다. 다시 로그인해 주세요.</span>
+          </div>
+        )}
+
+        <LoginForm suggestions={suggestions} />
       </div>
-      {kicked && (
-        <p className="rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-          다른 곳에서 로그인되어 이 접속은 종료되었습니다.
-        </p>
-      )}
-      <LoginForm suggestions={suggestions} />
     </main>
   );
 }
+
+

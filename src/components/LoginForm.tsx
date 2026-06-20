@@ -14,7 +14,7 @@ function highlight(text: string, query: string) {
   return (
     <>
       {text.slice(0, idx)}
-      <mark className="bg-transparent font-semibold text-indigo-600 dark:text-indigo-400">
+      <mark className="bg-transparent font-semibold text-slate-800">
         {text.slice(idx, idx + query.length)}
       </mark>
       {text.slice(idx + query.length)}
@@ -115,10 +115,10 @@ export default function LoginForm({ suggestions }: { suggestions: Suggestion[] }
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex w-full max-w-sm flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          이메일
+    <form onSubmit={onSubmit} className="flex w-full flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="email" className="text-xs font-bold uppercase tracking-wider text-gray-400">
+          이메일 주소
         </label>
         <div className="relative">
           <input
@@ -135,17 +135,16 @@ export default function LoginForm({ suggestions }: { suggestions: Suggestion[] }
             }}
             onKeyDown={onKeyDown}
             onBlur={() => {
-              // 옵션 클릭이 먼저 처리되도록 약간 지연
               blurTimer.current = setTimeout(() => setOpen(false), 120);
             }}
-            placeholder="you@gmail.com"
+            placeholder="example@gmail.com"
             required
             disabled={loading}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+            className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-gray-900 placeholder-gray-400 outline-none transition focus:border-slate-500 focus:ring-4 focus:ring-slate-100 disabled:opacity-60"
           />
 
           {open && filtered.length > 0 && (
-            <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+            <ul className="absolute z-20 mt-1.5 max-h-60 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-md">
               {filtered.map((s, idx) => (
                 <li key={s.email}>
                   <button
@@ -154,20 +153,19 @@ export default function LoginForm({ suggestions }: { suggestions: Suggestion[] }
                       itemRefs.current[idx] = el;
                     }}
                     onMouseDown={(e) => {
-                      // blur 보다 먼저 실행되어 선택이 유지되도록
                       e.preventDefault();
                       if (blurTimer.current) clearTimeout(blurTimer.current);
                       pick(s);
                     }}
                     onMouseEnter={() => setActive(idx)}
-                    className={`flex w-full flex-col items-start px-3 py-1.5 text-left ${
-                      active === idx ? 'bg-indigo-50 dark:bg-indigo-950/50' : ''
+                    className={`flex w-full flex-col items-start rounded-lg px-3.5 py-2 text-left transition ${
+                      active === idx ? 'bg-slate-100 text-slate-900 font-semibold' : 'text-gray-700'
                     }`}
                   >
-                    <span className="text-xs text-gray-400">
+                    <span className="text-[10px] text-gray-400">
                       {highlight(s.nickname, query)}
                     </span>
-                    <span className="text-sm text-gray-900 dark:text-gray-100">
+                    <span className="text-xs">
                       {highlight(s.email, query)}
                     </span>
                   </button>
@@ -178,15 +176,31 @@ export default function LoginForm({ suggestions }: { suggestions: Suggestion[] }
         </div>
       </div>
 
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {error && (
+        <p className="text-xs text-red-650 font-bold">
+          {error}
+        </p>
+      )}
 
       <button
         type="submit"
         disabled={loading}
-        className="rounded-lg bg-indigo-600 px-4 py-2.5 font-medium text-white transition hover:bg-indigo-700 disabled:opacity-60"
+        className="w-full rounded-xl bg-slate-900 py-3 font-semibold text-white transition hover:bg-slate-800 active:scale-[0.99] disabled:opacity-60 disabled:pointer-events-none"
       >
-        {loading ? '확인 중…' : '입장하기'}
+        {loading ? (
+          <span className="flex items-center justify-center gap-2">
+            <svg className="h-4 w-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            입장 중…
+          </span>
+        ) : (
+          '로그인'
+        )}
       </button>
     </form>
   );
 }
+
+
