@@ -17,12 +17,11 @@ alter table public.users add column if not exists active_sid text;
 
 -- ---------- 방 (고정 7개) ----------
 -- state: lobby(대기) | writing(작성중) | revealing(공개중) | finished(종료)
--- mode:  normal(일반) | anonymous(익명)
+-- mode:  normal(일반) | anonymous(익명) — 기본값은 익명
 create table if not exists public.rooms (
   id                 int primary key,
-  mode               text not null default 'normal' check (mode in ('normal','anonymous')),
+  mode               text not null default 'anonymous' check (mode in ('normal','anonymous')),
   state              text not null default 'lobby'  check (state in ('lobby','writing','revealing','finished')),
-  current_round      int  not null default 0,
   current_target_idx int  not null default 0,  -- revealing 단계에서 공개 중인 대상 순번
   reveal_page        int  not null default 0,  -- 현재 대상의 메시지 페이지
   updated_at         timestamptz not null default now()
@@ -32,6 +31,14 @@ create table if not exists public.rooms (
 insert into public.rooms (id)
 select g from generate_series(1,7) as g
 on conflict (id) do nothing;
+
+-- ---------- 주제 풀 ----------
+-- 게임 시작 시 이 표에서 멤버 수만큼 무작위로 뽑아 멤버당 하나씩 배정한다.
+-- (시드 데이터는 migrations/010_topics_table.sql 참고. 운영 DB에는 마이그레이션으로 채운다.)
+create table if not exists public.topics (
+  id   bigint generated always as identity primary key,
+  text text not null
+);
 
 -- ---------- 방 참가자 ----------
 create table if not exists public.room_members (
@@ -44,16 +51,15 @@ create table if not exists public.room_members (
 -- 가장 먼저 들어온 사람이 방장 (min(joined_at))
 -- 준비 상태(ready)는 DB가 아니라 Supabase Realtime Presence 로 관리한다.
 
--- ---------- 게임 라운드별 주제 배정 ----------
+-- ---------- 게임 주제 배정 (방마다 최신 1게임만 유지) ----------
 create table if not exists public.assignments (
   id             uuid primary key default gen_random_uuid(),
   room_id        int  not null references public.rooms(id) on delete cascade,
-  round          int  not null,
   target_user_id uuid not null references public.users(id) on delete cascade,
   topic          text not null,
   order_idx      int  not null,   -- 공개 순서
   created_at     timestamptz not null default now(),
-  unique (room_id, round, target_user_id)
+  unique (room_id, target_user_id)
 );
 
 -- ---------- 작성된 메시지 ----------
@@ -83,6 +89,7 @@ alter table public.rooms        enable row level security;
 alter table public.room_members enable row level security;
 alter table public.assignments  enable row level security;
 alter table public.messages     enable row level security;
+alter table public.topics       enable row level security;
 
 do $$
 begin
@@ -105,6 +112,10 @@ begin
   -- messages
   if not exists (select 1 from pg_policies where tablename='messages' and policyname='read_messages') then
     create policy read_messages on public.messages for select using (true);
+  end if;
+  -- topics
+  if not exists (select 1 from pg_policies where tablename='topics' and policyname='read_topics') then
+    create policy read_topics on public.topics for select using (true);
   end if;
 end $$;
 

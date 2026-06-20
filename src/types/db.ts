@@ -13,7 +13,6 @@ export type RoomRow = {
   id: number;
   mode: RoomMode;
   state: RoomState;
-  current_round: number;
   current_target_idx: number;
   reveal_page: number;
   phase_ends_at: string | null;
@@ -31,7 +30,6 @@ export type RoomMemberRow = {
 export type AssignmentRow = {
   id: string;
   room_id: number;
-  round: number;
   target_user_id: string;
   topic: string;
   order_idx: number;

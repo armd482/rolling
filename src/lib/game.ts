@@ -11,8 +11,9 @@ export const SECONDS_PER_TOPIC = 120;
 export const WRITING_GRACE_SECONDS = 30;
 
 // 중복 없이 n개의 주제를 무작위로 뽑는다.
-export function pickTopics(n: number): string[] {
-  const pool = [...TOPICS];
+// source(주제 풀)를 넘기면 그 풀에서, 없으면 기본 TOPICS 에서 뽑는다.
+export function pickTopics(n: number, source: readonly string[] = TOPICS): string[] {
+  const pool = [...source];
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];

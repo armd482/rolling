@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
   const { data: room } = await supabase
     .from('rooms')
-    .select('state, current_round, phase_ends_at')
+    .select('state, phase_ends_at')
     .eq('id', id)
     .maybeSingle();
   if (!room) return NextResponse.json({ error: '방을 찾을 수 없습니다.' }, { status: 404 });
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       .select('user_id, joined_at, last_seen')
       .eq('room_id', id)
       .order('joined_at', { ascending: true }),
-    supabase.from('assignments').select('id').eq('room_id', id).eq('round', room.current_round),
+    supabase.from('assignments').select('id').eq('room_id', id),
   ]);
   const aids = (assignments ?? []).map((a) => a.id);
   const required = Math.max(0, aids.length - 1); // 자기 자신 제외

@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   // 작성 단계인지 + 마감 전인지
   const { data: room } = await supabase
     .from('rooms')
-    .select('state, current_round, phase_ends_at')
+    .select('state, phase_ends_at')
     .eq('id', id)
     .maybeSingle();
   if (!room || room.state !== 'writing') {
@@ -46,7 +46,6 @@ export async function POST(req: Request) {
     .from('assignments')
     .select('id')
     .eq('room_id', id)
-    .eq('round', room.current_round)
     .eq('target_user_id', targetUserId)
     .maybeSingle();
   if (!assignment) {

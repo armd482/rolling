@@ -54,7 +54,6 @@ export default async function RoomPage({
       .from('assignments')
       .select('*')
       .eq('room_id', roomId)
-      .eq('round', room.current_round)
       .order('order_idx', { ascending: true });
 
     const aRows = (assignments ?? []) as AssignmentRow[];
@@ -95,7 +94,6 @@ export default async function RoomPage({
     }));
 
     game = {
-      round: room.current_round,
       targets,
       myMessages,
       progress,

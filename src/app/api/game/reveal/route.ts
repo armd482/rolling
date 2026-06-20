@@ -37,7 +37,7 @@ export async function POST(req: Request) {
 
   const { data: room } = await supabase
     .from('rooms')
-    .select('state, current_round')
+    .select('state')
     .eq('id', id)
     .maybeSingle();
   if (!room || room.state !== 'revealing') {
@@ -73,7 +73,6 @@ export async function POST(req: Request) {
     .from('assignments')
     .select('id, order_idx')
     .eq('room_id', id)
-    .eq('round', room.current_round)
     .order('order_idx', { ascending: true });
   const targets = assignments ?? [];
   if (!targets.length) {

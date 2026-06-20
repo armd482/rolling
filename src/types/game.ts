@@ -14,7 +14,6 @@ export type RevealMessage = {
 };
 
 export type GameData = {
-  round: number;
   targets: GameTarget[]; // order_idx 오름차순
   // 작성 단계: 내가 쓴 내용 (assignmentId -> content)
   myMessages: Record<string, string>;

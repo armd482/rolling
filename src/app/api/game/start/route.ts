@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getValidSession } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { pickTopics, writingDeadline } from '@/lib/game';
+import { TOPICS } from '@/lib/topics';
 import { effectiveHostId } from '@/lib/host';
 
 export async function POST(req: Request) {
@@ -31,25 +32,28 @@ export async function POST(req: Request) {
 
   const { data: room } = await supabase
     .from('rooms')
-    .select('state, current_round')
+    .select('state')
     .eq('id', id)
     .maybeSingle();
   if (!room || room.state !== 'lobby') {
     return NextResponse.json({ error: '이미 시작된 방입니다.' }, { status: 409 });
   }
 
-  const round = (room.current_round ?? 0) + 1;
-  const topics = pickTopics(members.length);
+  // 주제 풀은 DB(topics)에서 가져온다. 멤버 수만큼 무작위로 뽑아 멤버당 하나씩 배정.
+  // 테이블이 없거나 풀이 부족하면 기본 TOPICS 로 폴백(앱이 깨지지 않도록).
+  const { data: topicRows } = await supabase.from('topics').select('text');
+  const pool = (topicRows ?? []).map((r) => r.text as string).filter(Boolean);
+  const source = pool.length >= members.length ? pool : TOPICS;
+  const topics = pickTopics(members.length, source);
   const rows = members.map((m, i) => ({
     room_id: id,
-    round,
     target_user_id: m.user_id,
     topic: topics[i],
     order_idx: i,
   }));
 
-  // 혹시 남아있을 동일 라운드 배정 정리 후 삽입
-  await supabase.from('assignments').delete().eq('room_id', id).eq('round', round);
+  // 이전 게임 배정 정리 후 삽입(방마다 최신 1게임만 유지)
+  await supabase.from('assignments').delete().eq('room_id', id);
   const { error: aerr } = await supabase.from('assignments').insert(rows);
   if (aerr) {
     return NextResponse.json({ error: '주제 배정에 실패했습니다.' }, { status: 500 });
@@ -59,7 +63,6 @@ export async function POST(req: Request) {
     .from('rooms')
     .update({
       state: 'writing',
-      current_round: round,
       current_target_idx: 0,
       reveal_page: 0,
       phase_ends_at: writingDeadline(members.length),

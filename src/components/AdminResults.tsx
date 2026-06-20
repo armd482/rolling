@@ -11,7 +11,6 @@ export type AdminMessage = {
 export type AdminEntry = {
   assignmentId: string;
   roomId: number;
-  round: number;
   topic: string;
   messages: AdminMessage[];
 };

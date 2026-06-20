@@ -30,9 +30,8 @@ export async function POST() {
   const { error } = await supabase
     .from('rooms')
     .update({
-      mode: 'normal',
+      mode: 'anonymous',
       state: 'lobby',
-      current_round: 0,
       current_target_idx: 0,
       reveal_page: 0,
       phase_ends_at: null,

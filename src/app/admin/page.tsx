@@ -20,7 +20,6 @@ export default async function AdminPage() {
         .from('assignments')
         .select('*')
         .order('room_id', { ascending: true })
-        .order('round', { ascending: true })
         .order('order_idx', { ascending: true }),
       supabase.from('messages').select('*').order('created_at', { ascending: true }),
       supabase.from('users').select('*'),
@@ -46,7 +45,6 @@ export default async function AdminPage() {
     const entry = {
       assignmentId: a.id,
       roomId: a.room_id,
-      round: a.round,
       topic: a.topic,
       messages: (msgsByAssignment.get(a.id) ?? []).map((m) => ({
         writerNickname: userById.get(m.writer_user_id)?.nickname ?? '?',

@@ -307,7 +307,7 @@ export default function WritingView({
       {/* 3) 작성 카드 + 채팅 (질문 남은 시간·작성 완료 현황 아래에 배치) */}
       <div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="flex min-h-0 flex-1 flex-col gap-5 rounded-3xl glass-card p-8 tape relative">
+          <div className="flex min-h-0 flex-1 flex-col gap-5 rounded-3xl glass-card p-8 tape relative overflow-y-auto">
         <div className="flex items-center justify-between border-b border-gray-150/40 pb-3">
           <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
             롤링페이퍼 질문 {idx + 1} / {order.length}
@@ -323,7 +323,7 @@ export default function WritingView({
 
         <div className="flex flex-col gap-2">
           <p className="text-xs font-semibold text-gray-400">전달된 질문 주제</p>
-          <p className="font-hand text-3xl text-gray-800 leading-relaxed font-semibold">
+          <p className="font-hand text-xl sm:text-2xl text-gray-800 leading-snug font-semibold break-words">
             {current.topic}
           </p>
         </div>
@@ -339,7 +339,7 @@ export default function WritingView({
           rows={6}
           maxLength={2000}
           placeholder={inputDisabled ? '시간이 종료되었습니다.' : '소중한 마음을 담은 답변을 이곳에 남겨보세요… (최대 2,000자)'}
-          className="flex-1 min-h-[160px] resize-none rounded-2xl border border-gray-200 bg-white/70 px-4 py-3.5 text-sm outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100/50 disabled:bg-gray-100/70 disabled:text-gray-400"
+          className="flex-1 min-h-[120px] resize-none rounded-2xl border border-gray-200 bg-white/70 px-4 py-3.5 text-sm outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100/50 disabled:bg-gray-100/70 disabled:text-gray-400"
         />
 
         <button
