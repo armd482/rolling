@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { GameTarget } from '@/types/game';
 
 // 질문 1개당 작성 시간(개별 관리). 제출하거나 시간이 끝나면 다음 질문으로 넘어간다.
@@ -30,6 +30,7 @@ export default function WritingView({
   progress,
   onWrite,
   onTimeUp,
+  chat,
 }: {
   targets: GameTarget[];
   myMessages: Record<string, string>;
@@ -38,6 +39,7 @@ export default function WritingView({
   progress: { userId: string; nickname: string; done: boolean }[];
   onWrite: (targetUserId: string, content: string) => void;
   onTimeUp: () => void;
+  chat?: ReactNode;
 }) {
   const myTargets = useMemo(() => targets.filter((t) => t.userId !== myUserId), [targets, myUserId]);
 
@@ -57,6 +59,8 @@ export default function WritingView({
   const [qDeadline, setQDeadline] = useState(() => Date.now() + QUESTION_SECONDS * 1000);
   const firedRef = useRef(false);
   const autoFiredRef = useRef<string | null>(null);
+  // 열람 화면(전부 제출) 진입 시 첫 카드로 한 번만 되돌리기 위한 가드
+  const reviewResetRef = useRef(false);
 
   const current = order[idx];
   const locked = current ? submitted.has(current.assignmentId) : false;
@@ -116,10 +120,19 @@ export default function WritingView({
     }
   }, [overallExpired, onTimeUp]);
 
+  // 내 몫을 모두 제출해 열람 화면으로 바뀌면, 마지막 카드가 아니라 첫 카드부터 보이도록 한 번만 idx 를 0 으로.
+  useEffect(() => {
+    if (reviewResetRef.current) return;
+    if (order.length > 0 && order.every((t) => submitted.has(t.assignmentId))) {
+      reviewResetRef.current = true;
+      setIdx(0);
+    }
+  }, [order, submitted]);
+
   if (!current) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-gray-500">작성할 주제가 없습니다. 잠시만 기다려 주세요.</p>
+      <div className="flex flex-1 items-center justify-center min-h-[300px] rounded-3xl glass-card">
+        <p className="text-sm font-semibold text-gray-500">작성할 주제가 없습니다. 잠시만 기다려 주세요.</p>
       </div>
     );
   }
@@ -148,82 +161,119 @@ export default function WritingView({
     setNow(t);
   }
 
+  // 작성 완료 현황 — 가로 칩(인원이 늘어도 줄바꿈되어 안정적)
   const progressPanel = (
-    <aside className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 sm:w-56 sm:shrink-0">
-      <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">완료 현황</h3>
-      <ul className="flex flex-col gap-1.5">
+    <div className="rounded-3xl glass-card p-4 sm:p-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+          작성 완료 현황
+        </h3>
+        <span className="text-[10px] font-semibold text-gray-400">
+          * 모든 참여자 완수 시 다음 단계로 자동 진행
+        </span>
+      </div>
+      <ul className="flex flex-wrap gap-2">
         {progress.map((p) => (
-          <li key={p.userId} className="flex items-center justify-between text-sm">
+          <li
+            key={p.userId}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold ${
+              p.done
+                ? 'border-emerald-100 bg-emerald-50 text-emerald-600'
+                : 'border-rose-100 bg-rose-50 text-rose-500'
+            }`}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                p.done ? 'bg-emerald-500' : 'bg-rose-400 animate-pulse'
+              }`}
+            />
             <span>{p.nickname}</span>
-            {p.done ? (
-              <span className="text-emerald-500">✓ 완료</span>
-            ) : (
-              <span className="text-gray-400">작성 중</span>
-            )}
+            <span className="text-[10px] opacity-70">{p.done ? '완료' : '작성 중'}</span>
           </li>
         ))}
       </ul>
-    </aside>
+    </div>
   );
 
   // 내 몫을 모두 제출했으면, 내가 작성한 내용을 한 화면씩(좌우 화살표로) 열람만 한다.
   if (allSubmitted) {
     return (
-      <div className="flex flex-1 flex-col gap-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch">
-          <div className="flex flex-1 flex-col justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 dark:border-emerald-900 dark:bg-emerald-950/40">
-            <h2 className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">작성 완료</h2>
-            <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80">
-              모두 제출했어요. 내가 남긴 내용을 확인하며 다른 사람을 기다려 주세요.
+      <div className="flex min-h-0 flex-1 flex-col gap-6">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col justify-center rounded-3xl border border-emerald-200/50 bg-emerald-50/50 px-6 py-5 backdrop-blur-sm shadow-sm shadow-emerald-50">
+            <h2 className="text-lg font-bold text-emerald-800">모든 롤링페이퍼 작성 완료</h2>
+            <p className="text-xs text-emerald-600 font-medium mt-1">
+              내 몫의 작성을 무사히 마쳤습니다. 내가 남긴 글을 감상하며 다른 동료들이 작성을 마칠 때까지 잠시 대기해 주세요.
             </p>
           </div>
           {progressPanel}
         </div>
 
-        <div className="flex flex-1 items-stretch gap-3">
-          <button
-            onClick={() => setIdx((i) => Math.max(0, i - 1))}
-            disabled={idx === 0}
-            aria-label="이전"
-            className="flex w-12 shrink-0 items-center justify-center rounded-2xl border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-30 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-gray-900"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-          </button>
+        <div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 flex-col gap-5 rounded-3xl glass-card p-6 sm:p-8 tape relative">
+            <div className="flex items-center justify-between border-b border-gray-100/50 pb-4">
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                내가 남긴 메시지 카드 {idx + 1} / {order.length}
+              </span>
+              <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-rose-600 border border-rose-100">
+                To. {current.nickname}
+              </span>
+            </div>
 
-          <div className="flex flex-1 flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
-            <div className="text-xs font-medium uppercase tracking-wide text-gray-400">
-              내가 작성한 내용 {idx + 1} / {order.length}
+            <div className="flex flex-col gap-3">
+              <p className="text-xs font-semibold text-gray-400">제시된 질문</p>
+              <p className="text-lg font-bold text-gray-800 leading-normal">
+                {current.topic}
+              </p>
             </div>
-            <p className="font-hand text-3xl text-indigo-600">💌 {current.nickname} 님에게</p>
-            <p className="whitespace-pre-wrap font-hand text-2xl text-gray-800">{current.topic}</p>
-            <div className="lined flex-1 whitespace-pre-wrap break-words rounded-lg border border-gray-100 px-3 py-2 font-hand text-2xl text-gray-700">
-              {drafts[current.assignmentId]}
+
+            <div className="flex min-h-0 flex-1 flex-col gap-2 mt-3">
+              <p className="text-xs font-semibold text-gray-400">나의 답변</p>
+              <div className="flex min-h-0 flex-1 items-stretch gap-2 sm:gap-3">
+                <button
+                  onClick={() => setIdx((i) => Math.max(0, i - 1))}
+                  disabled={idx === 0}
+                  aria-label="이전 카드"
+                  className="flex h-10 w-10 shrink-0 self-center items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                    <path d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+
+                <div className="lined min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words rounded-2xl border border-gray-100 px-5 py-4 font-hand text-base text-gray-700 shadow-inner">
+                  {drafts[current.assignmentId]}
+                </div>
+
+                <button
+                  onClick={() => setIdx((i) => Math.min(order.length - 1, i + 1))}
+                  disabled={idx === order.length - 1}
+                  aria-label="다음 카드"
+                  className="flex h-10 w-10 shrink-0 self-center items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                    <path d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
             </div>
-            <div className="flex justify-center gap-1.5">
+
+            <div className="flex shrink-0 justify-center gap-2">
               {order.map((t, i) => (
                 <span
                   key={t.assignmentId}
-                  className={`h-2 w-2 rounded-full ${
-                    i === idx ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-700'
+                  className={`h-2.5 rounded-full transition-all duration-300 ${
+                    i === idx ? 'w-5 bg-rose-500' : 'w-2.5 bg-gray-300'
                   }`}
                 />
               ))}
             </div>
           </div>
-
-          <button
-            onClick={() => setIdx((i) => Math.min(order.length - 1, i + 1))}
-            disabled={idx === order.length - 1}
-            aria-label="다음"
-            className="flex w-12 shrink-0 items-center justify-center rounded-2xl border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-30 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-gray-900"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 18l6-6-6-6" />
-            </svg>
-          </button>
+          </div>
+          {chat && <div className="flex lg:w-80 lg:shrink-0">{chat}</div>}
         </div>
+
       </div>
     );
   }
@@ -231,40 +281,52 @@ export default function WritingView({
   const inputDisabled = locked || qExpired || overallExpired;
 
   return (
-    <div className="flex flex-1 flex-col gap-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch">
-      {/* 이 질문의 개별 남은 시간 */}
-      <div className="flex flex-1 items-center justify-between rounded-2xl border border-gray-200 bg-white px-5 py-4 dark:border-gray-800 dark:bg-gray-900">
+    <div className="flex min-h-0 flex-1 flex-col gap-6">
+      {/* 1) 남은 시간 (상단) */}
+      <div className="flex items-center justify-between rounded-3xl glass-card p-6">
         <div>
-          <h2 className="text-sm font-semibold">이 질문 남은 시간</h2>
-          <p className="text-xs text-gray-500">
-            질문마다 {Math.round(QUESTION_SECONDS / 60)}분씩, 제출하거나 시간이 끝나면 다음 질문으로
-            넘어갑니다. (제출 {submittedCount}/{order.length})
+          <h2 className="text-base font-bold text-gray-800">이 질문 남은 시간</h2>
+          <p className="text-xs text-gray-400 font-semibold mt-1">
+            한 질문당 {Math.round(QUESTION_SECONDS / 60)}분 제한, 완료 시 다음 질문으로 자동 전환. (제출 {submittedCount}/{order.length})
           </p>
         </div>
         <div
-          className={`font-mono text-3xl font-bold tabular-nums ${
-            qUrgent ? 'text-red-500' : 'text-indigo-600 dark:text-indigo-400'
+          className={`font-mono text-3xl font-extrabold tabular-nums px-4 py-2 rounded-2xl border ${
+            qUrgent
+              ? 'text-rose-600 bg-rose-50 border-rose-200 animate-pulse'
+              : 'text-violet-600 bg-violet-50/50 border-violet-100'
           }`}
         >
           {fmt(qRemaining)}
         </div>
       </div>
+
+      {/* 2) 작성 완료 현황 (작성 카드 위) */}
       {progressPanel}
-      </div>
 
-      {/* 한 화면에 한 질문 */}
-      <div className="flex flex-1 flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
-        <div className="text-xs font-medium uppercase tracking-wide text-gray-400">
-          질문 {idx + 1} / {order.length}
+      {/* 3) 작성 카드 + 채팅 (질문 남은 시간·작성 완료 현황 아래에 배치) */}
+      <div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col gap-5 rounded-3xl glass-card p-8 tape relative">
+        <div className="flex items-center justify-between border-b border-gray-150/40 pb-3">
+          <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
+            롤링페이퍼 질문 {idx + 1} / {order.length}
+          </span>
         </div>
 
-        {/* 누구에게 쓰는 글인지 크게 보여준다 */}
-        <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-center">
-          <span className="font-hand text-3xl text-indigo-600">💌 {current.nickname} 님에게</span>
+        {/* 당사자(받는 사람) */}
+        <div className="rounded-2xl border border-rose-200/60 bg-rose-50/70 px-5 py-4">
+          <p className="truncate text-3xl font-extrabold leading-tight text-rose-600">
+            {current.nickname}
+          </p>
         </div>
 
-        <p className="whitespace-pre-wrap font-hand text-2xl text-gray-800">{current.topic}</p>
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-semibold text-gray-400">전달된 질문 주제</p>
+          <p className="font-hand text-3xl text-gray-800 leading-relaxed font-semibold">
+            {current.topic}
+          </p>
+        </div>
 
         <textarea
           value={value}
@@ -275,8 +337,8 @@ export default function WritingView({
           }}
           rows={6}
           maxLength={2000}
-          placeholder={inputDisabled ? '시간이 종료되었습니다.' : '내용을 입력하세요…'}
-          className="flex-1 resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 disabled:bg-gray-100 disabled:text-gray-400 dark:border-gray-700 dark:bg-gray-950 dark:disabled:bg-gray-800"
+          placeholder={inputDisabled ? '시간이 종료되었습니다.' : '소중한 마음을 담은 답변을 이곳에 남겨보세요… (최대 2,000자)'}
+          className="flex-1 min-h-[160px] resize-none rounded-2xl border border-gray-200 bg-white/70 px-4 py-3.5 text-sm outline-none transition focus:border-rose-400 focus:bg-white focus:ring-4 focus:ring-rose-100/50 disabled:bg-gray-100/70 disabled:text-gray-400"
         />
 
         <button
@@ -286,6 +348,9 @@ export default function WritingView({
         >
           제출
         </button>
+          </div>
+        </div>
+        {chat && <div className="flex lg:w-80 lg:shrink-0">{chat}</div>}
       </div>
     </div>
   );

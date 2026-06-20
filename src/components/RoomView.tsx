@@ -70,10 +70,23 @@ export default function RoomView({
   const [readyMap, setReadyMap] = useState<Record<string, boolean>>({});
   // 공개 모드: DB(rooms.mode) 영속 + broadcast 즉시 동기화
   const [selectedMode, setSelectedMode] = useState<RoomMode>(mode);
+  // 공개 단계 페이지 위치를 낙관적으로 즉시 반영(서버 왕복 지연 체감 제거).
+  // base = 오버라이드 당시의 서버 위치. 서버가 그 위치에서 움직이면(=base 와 달라지면) 오버라이드 폐기.
+  const [revealOverride, setRevealOverride] = useState<{ ti: number; pg: number } | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
   // 준비 상태를 broadcast 로 동기화. 새 참가자 입장 시 재전송하기 위해 ref 로 최신값 보관
   const myReadyRef = useRef(false);
+  // 공개 이동: 연타 시 최종 위치 하나만 디바운스로 전송
+  const revealSendRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealPendingRef = useRef<{ targetIdx: number; page: number } | 'finish' | null>(null);
+  useEffect(
+    () => () => {
+      if (revealSendRef.current) clearTimeout(revealSendRef.current);
+    },
+    [],
+  );
 
   const me = members.find((m) => m.userId === myUserId);
   const iAmHost = me?.isHost ?? false;
@@ -214,11 +227,12 @@ export default function RoomView({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [chats]);
 
-  function send(e: React.FormEvent) {
-    e.preventDefault();
+  function send(e?: React.FormEvent) {
+    e?.preventDefault();
     const content = text.trim();
     if (!content || !channelRef.current) return;
     setText('');
+    if (chatInputRef.current) chatInputRef.current.style.height = 'auto';
     channelRef.current.send({
       type: 'broadcast',
       event: 'chat',
@@ -315,12 +329,81 @@ export default function RoomView({
     }
   }, [state, game, requestToReveal]);
 
-  function revealNav(dir: 'next' | 'prev') {
+  // 오버라이드는 "낙관적 목표 위치". 서버가 그 위치에 도달할 때까지 유지한다.
+  // (디바운스 경계를 넘는 연타로 서버가 잠깐 중간 위치로 이동해도 표시가 튀지 않게)
+  const revealTi = revealOverride ? revealOverride.ti : currentTargetIdx;
+  const revealPg = revealOverride ? revealOverride.pg : revealPage;
+  useEffect(() => {
+    if (
+      revealOverride &&
+      currentTargetIdx === revealOverride.ti &&
+      revealPage === revealOverride.pg
+    ) {
+      setRevealOverride(null);
+    }
+  }, [revealOverride, currentTargetIdx, revealPage]);
+
+  // 디바운스된 최종 위치를 서버에 전송(절대 위치 또는 종료)
+  function flushRevealSend() {
+    const pending = revealPendingRef.current;
+    revealPendingRef.current = null;
+    if (!pending) return;
     fetch('/api/game/reveal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roomId, dir }),
-    });
+      body: JSON.stringify(pending === 'finish' ? { roomId, finish: true } : { roomId, ...pending }),
+    }).catch(() => setRevealOverride(null));
+  }
+
+  function revealNav(dir: 'next' | 'prev') {
+    if (!game) return;
+    // 낙관적: 이미 로드된 메시지로 다음/이전 위치를 즉시 계산해 카드를 바로 넘긴다.
+    const pagesOf = (ti: number) => {
+      const t = game.targets[ti];
+      return 1 + (t ? game.messagesByAssignment[t.assignmentId]?.length ?? 0 : 0);
+    };
+    let ti = revealTi;
+    let pg = revealPg;
+    let action: { targetIdx: number; page: number } | 'finish' | null = null;
+    if (dir === 'next') {
+      if (pg < pagesOf(ti) - 1) {
+        pg += 1;
+        action = { targetIdx: ti, page: pg };
+      } else if (ti < game.targets.length - 1) {
+        ti += 1;
+        pg = 0;
+        action = { targetIdx: ti, page: pg };
+      } else {
+        action = 'finish';
+      }
+    } else {
+      if (pg > 0) {
+        pg -= 1;
+        action = { targetIdx: ti, page: pg };
+      } else if (ti > 0) {
+        ti -= 1;
+        pg = pagesOf(ti) - 1;
+        action = { targetIdx: ti, page: pg };
+      }
+    }
+    if (!action) return;
+    // 종료는 카드를 더 넘기지 않고, 그 외엔 낙관적으로 즉시 이동 표시
+    if (action !== 'finish') setRevealOverride({ ti, pg });
+    revealPendingRef.current = action;
+    // 연타를 모아 최종 위치 하나만 전송(마지막 쓰기 승리 → 표시가 되돌아가지 않음)
+    if (revealSendRef.current) clearTimeout(revealSendRef.current);
+    revealSendRef.current = setTimeout(flushRevealSend, 130);
+  }
+
+  // 특정 대상의 처음 페이지(소개)로 바로 이동 — 절대 위치 전송(연타 디바운스 공유)
+  function revealJump(targetIdx: number) {
+    if (!game) return;
+    const ti = Math.max(0, Math.min(game.targets.length - 1, targetIdx));
+    const pg = 0;
+    setRevealOverride({ ti, pg });
+    revealPendingRef.current = { targetIdx: ti, page: pg };
+    if (revealSendRef.current) clearTimeout(revealSendRef.current);
+    revealSendRef.current = setTimeout(flushRevealSend, 130);
   }
 
   function resetGame() {
@@ -362,247 +445,350 @@ export default function RoomView({
     }
   }
 
+  // 모든 단계(대기/작성/공개/종료)에서 공통으로 보여줄 채팅 패널
+  const chatPanel = (
+    <section className="rounded-3xl glass-panel-dark p-6 flex h-full min-h-[320px] w-full flex-col justify-between text-white overflow-hidden shadow-2xl">
+      <div className="border-b border-white/10 pb-3 mb-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+          실시간 대화방
+        </h2>
+      </div>
+
+      <div ref={scrollRef} className="flex-1 overflow-y-auto pr-1">
+        {chats.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center text-center">
+            <p className="text-xs text-gray-400">자유롭게 채팅을 나누어 보세요.</p>
+          </div>
+        ) : (
+          chats.map((c, i) => {
+            const mine = c.userId === myUserId;
+            // 같은 사용자가 연속으로 보낸 메시지면 작성자 이름을 한 번만 보여주고 간격을 좁힌다.
+            const firstOfGroup = i === 0 || chats[i - 1].userId !== c.userId;
+            return (
+              <div
+                key={c.id}
+                className={`flex flex-col ${mine ? 'items-end' : 'items-start'} ${
+                  i === 0 ? '' : firstOfGroup ? 'mt-3' : 'mt-1'
+                }`}
+              >
+                {!mine && firstOfGroup && (
+                  <span className="mb-1 px-1 text-[10px] font-bold text-gray-400">
+                    {c.nickname}
+                  </span>
+                )}
+                <span
+                  className={`max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${
+                    mine
+                      ? 'bg-blue-600 text-white font-medium rounded-tr-none'
+                      : 'bg-white/10 text-white rounded-tl-none border border-white/5'
+                  }`}
+                >
+                  {c.content}
+                </span>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <form onSubmit={send} className="flex items-end gap-2 border-t border-white/10 pt-4 mt-3">
+        <textarea
+          ref={chatInputRef}
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            // 내용에 맞춰 높이 자동 조절(최대 5줄 정도)
+            e.target.style.height = 'auto';
+            e.target.style.height = `${Math.min(e.target.scrollHeight, 96)}px`;
+          }}
+          onKeyDown={(e) => {
+            // Enter = 전송, Shift+Enter = 줄바꿈
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+          rows={1}
+          placeholder="메시지를 입력하세요"
+          maxLength={500}
+          className="max-h-24 min-h-[40px] flex-1 resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs leading-relaxed text-white placeholder-gray-400 outline-none transition focus:border-rose-400 focus:bg-white/10 focus:ring-2 focus:ring-rose-400/20"
+        />
+        <button
+          type="submit"
+          disabled={!text.trim()}
+          className="h-10 shrink-0 rounded-2xl bg-blue-600 px-4 text-xs font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"
+        >
+          전송
+        </button>
+      </form>
+    </section>
+  );
+
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-8 sm:px-8 lg:px-10">
-      <header className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="font-hand text-4xl text-indigo-600">{roomId}번 방</h1>
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-            {STATE_LABEL[state]} · {mode === 'anonymous' ? '익명' : '일반'}
+    <main className="relative mx-auto flex h-dvh w-full max-w-6xl flex-col overflow-hidden px-6 py-6 sm:px-8 lg:px-10">
+      {/* 백그라운드 오로라 데코 */}
+      <div className="pointer-events-none absolute -top-20 -left-20 h-96 w-96 rounded-full bg-rose-100/40 blur-3xl" />
+      <div className="pointer-events-none absolute top-40 -right-20 h-96 w-96 rounded-full bg-violet-100/40 blur-3xl" />
+
+      <header className="relative z-10 mb-8 flex shrink-0 items-center justify-between">
+        <div className="flex items-center gap-4">
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+            {roomId}번 방
+          </h1>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold text-gray-600 border border-white/60 shadow-sm backdrop-blur-sm">
+            <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
+            {STATE_LABEL[state]} · {mode === 'anonymous' ? '익명 모드' : '실명 모드'}
           </span>
         </div>
         <button
           onClick={leave}
           disabled={leaving || gameInProgress}
           title={gameInProgress ? '게임 진행 중에는 나갈 수 없습니다.' : undefined}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-900"
+          className="rounded-2xl border border-rose-200/50 bg-rose-50/40 px-4 py-2 text-sm font-semibold text-rose-600 backdrop-blur-sm transition hover:bg-rose-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
           방 나가기
         </button>
       </header>
 
       {state === 'writing' && game ? (
-        <WritingView
-          targets={game.targets}
-          myMessages={game.myMessages}
-          myUserId={myUserId}
-          phaseEndsAt={phaseEndsAt}
-          progress={game.progress}
-          onWrite={writeMessage}
-          onTimeUp={requestToReveal}
-        />
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+          <WritingView
+            targets={game.targets}
+            myMessages={game.myMessages}
+            myUserId={myUserId}
+            phaseEndsAt={phaseEndsAt}
+            progress={game.progress}
+            onWrite={writeMessage}
+            onTimeUp={requestToReveal}
+            chat={chatPanel}
+          />
+        </div>
       ) : state === 'revealing' && game ? (
-        <RevealView
-          targets={game.targets}
-          messagesByAssignment={game.messagesByAssignment}
-          currentTargetIdx={currentTargetIdx}
-          revealPage={revealPage}
-          phaseEndsAt={phaseEndsAt}
-          iAmHost={iAmHost}
-          onNav={revealNav}
-        />
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <RevealView
+              targets={game.targets}
+              messagesByAssignment={game.messagesByAssignment}
+              currentTargetIdx={revealTi}
+              revealPage={revealPg}
+              iAmHost={iAmHost}
+              onNav={revealNav}
+              onJump={revealJump}
+            />
+          </div>
+          <div className="flex lg:w-80 lg:shrink-0">{chatPanel}</div>
+        </div>
       ) : state === 'finished' && game ? (
-        <FinishedView
-          targets={game.targets}
-          messagesByAssignment={game.messagesByAssignment}
-          iAmHost={iAmHost}
-          onReset={resetGame}
-        />
-      ) : (
-        <>
-      {/* 참가자 */}
-      <section className="mb-6 flex-1">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <h2 className="pt-2 text-xs font-medium uppercase tracking-wide text-gray-400">
-            참가자 {members.length}/5
-          </h2>
-          {iAmHost ? (
-            <div className="flex flex-col items-end gap-1.5">
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-amber-600 dark:text-amber-400">
-                  👑 당신이 방장입니다
-                </span>
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-6">
+          {/* 게임 종료 헤더 — 제목과 버튼을 한 줄에 두어 방장/일반 헤더 높이가 같도록 */}
+          <div className="shrink-0 border-b border-gray-200/50 pb-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-2xl font-bold tracking-tight text-gray-900">게임 종료</h2>
+              {iAmHost && (
                 <button
-                  onClick={start}
-                  disabled={!allReady || starting}
-                  className={`whitespace-nowrap rounded-lg px-5 py-2 text-sm font-semibold leading-none shadow-sm transition ${
-                    allReady && !starting
-                      ? 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98]'
-                      : 'cursor-not-allowed bg-gray-200 text-gray-400 shadow-none dark:bg-gray-800 dark:text-gray-500'
-                  }`}
+                  onClick={resetGame}
+                  className="shrink-0 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 active:bg-blue-800"
                 >
-                  {starting ? '시작 중…' : '시작하기'}
+                  다시 시작하기
                 </button>
-              </div>
-              {startDisabledReason && (
-                <p className="text-right text-xs text-red-500">⚠ {startDisabledReason}</p>
               )}
             </div>
-          ) : (
-            <button
-              onClick={toggleReady}
-              className={`whitespace-nowrap rounded-lg px-5 py-2 text-sm font-semibold leading-none text-white shadow-sm transition ${
-                myReady
-                  ? 'bg-emerald-600 hover:bg-emerald-700'
-                  : 'bg-indigo-600 hover:bg-indigo-700'
-              }`}
-            >
-              {myReady ? '✓ 준비 완료 (클릭해 해제)' : '준비하기'}
-            </button>
-          )}
-        </div>
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {members.map((m) => {
-            const ready = readyMap[m.userId] ?? false;
-            const isMe = m.userId === myUserId;
-            return (
-              <li
-                key={m.userId}
-                className={`flex flex-col gap-3 rounded-xl border p-4 ${
-                  isMe
-                    ? 'border-indigo-200 bg-indigo-50 dark:border-indigo-900 dark:bg-indigo-950/50'
-                    : 'border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold">
-                    {m.nickname}
-                    {m.isHost && ' 👑'}
-                  </span>
-                  {isMe ? (
-                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
-                      나
-                    </span>
-                  ) : iAmHost && !m.isHost ? (
-                    <button
-                      onClick={() => kick(m.userId)}
-                      className="rounded-md border border-red-200 px-2 py-0.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/50"
-                    >
-                      강퇴
-                    </button>
-                  ) : null}
-                </div>
-                {m.isHost ? (
-                  <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                    방장
-                  </span>
-                ) : ready ? (
-                  <span className="w-fit rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                    ✓ 준비 완료
-                  </span>
-                ) : (
-                  <span className="w-fit rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                    대기 중
-                  </span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </section>
-
-      <div className="mt-auto flex flex-col gap-4">
-        {/* 공개 모드 선택 (방장만 변경 가능, 참가자는 열람) — 채팅창과 동일 높이 */}
-        <section className="flex h-72 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2 dark:border-gray-800">
-            <h2 className="text-xs font-medium uppercase tracking-wide text-gray-400">공개 모드</h2>
-            <span className="text-xs text-gray-400">
-              {iAmHost ? '방장이 선택합니다' : '방장이 선택한 모드입니다'}
-            </span>
+            <p className="mt-1 text-sm text-gray-500 font-semibold">
+              소중한 동료들이 정성껏 남긴 전체 롤링페이퍼 결과를 확인해 보세요. (카드를 누르면 크게 볼 수 있어요)
+            </p>
           </div>
-          <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
-            {MODE_OPTIONS.map((opt) => {
-              const active = selectedMode === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => changeMode(opt.value)}
-                  disabled={!iAmHost}
-                  aria-pressed={active}
-                  className={`flex flex-1 flex-col items-start gap-1 rounded-xl border p-4 text-left transition ${
-                    active
-                      ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200 dark:bg-indigo-950/50 dark:ring-indigo-900'
-                      : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900'
-                  } ${
-                    iAmHost
-                      ? 'cursor-pointer hover:border-indigo-300'
-                      : 'cursor-default opacity-100'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    {iAmHost && (
-                      <span
-                        className={`flex h-4 w-4 items-center justify-center rounded-full border ${
-                          active
-                            ? 'border-indigo-600 bg-indigo-600'
-                            : 'border-gray-300 dark:border-gray-600'
+
+          {/* 헤더 아래: 카드 영역 + 채팅 */}
+          <div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <FinishedView
+                targets={game.targets}
+                messagesByAssignment={game.messagesByAssignment}
+              />
+            </div>
+            <div className="flex lg:w-80 lg:shrink-0">{chatPanel}</div>
+          </div>
+        </div>
+      ) : (
+        <div className="relative z-10 grid min-h-0 flex-1 gap-8 overflow-y-auto lg:grid-cols-12">
+          {/* 좌측: 참가자 현황 및 준비/시작 컨트롤 */}
+          <div className="flex flex-col gap-6 lg:col-span-7">
+            <section className="rounded-3xl glass-card p-6 flex-1 flex flex-col justify-between min-h-[400px]">
+              <div>
+                <div className="mb-6 flex items-start justify-between">
+                  <div>
+                    <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                      참가자 목록
+                    </h2>
+                    <p className="text-xl font-extrabold text-gray-800 mt-1">
+                      현재 대기 인원 ({members.length}/5)
+                    </p>
+                  </div>
+
+                  {iAmHost ? (
+                    <div className="flex flex-col items-end gap-1.5">
+                      <button
+                        onClick={start}
+                        disabled={!allReady || starting}
+                        className={`rounded-2xl px-6 py-3 text-sm font-bold shadow-md transition-all ${
+                          allReady && !starting
+                            ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
+                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                         }`}
                       >
-                        {active && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
-                      </span>
-                    )}
-                    <span className="font-semibold">{opt.label}</span>
-                    {active && (
-                      <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
-                        선택됨
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{opt.desc}</p>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* 채팅 (휘발성 · Broadcast) — 하단 검은 반투명 컴팩트 패널 */}
-        <section className="flex h-72 flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/60 text-gray-100 shadow-xl backdrop-blur-md">
-        <h2 className="border-b border-white/10 px-4 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
-          채팅
-        </h2>
-        <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto px-4 py-3">
-          {chats.length === 0 ? (
-            <p className="py-8 text-center text-sm text-gray-500">아직 메시지가 없습니다.</p>
-          ) : (
-            chats.map((c) => {
-              const mine = c.userId === myUserId;
-              return (
-                <div key={c.id} className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
-                  {!mine && <span className="mb-0.5 px-1 text-xs text-gray-400">{c.nickname}</span>}
-                  <span
-                    className={`max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-3 py-1.5 text-sm ${
-                      mine ? 'bg-indigo-600 text-white' : 'bg-white/15 text-gray-100'
-                    }`}
-                  >
-                    {c.content}
-                  </span>
+                        {starting ? '시작 중…' : '게임 시작하기'}
+                      </button>
+                      {startDisabledReason && (
+                        <p className="text-xs text-rose-500 font-semibold mt-1">
+                          {startDisabledReason}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={toggleReady}
+                      className={`rounded-2xl px-6 py-3 text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                        myReady
+                          ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-100'
+                          : 'bg-blue-600 hover:bg-blue-700'
+                      }`}
+                    >
+                      {myReady ? '준비 완료 (클릭해 취소)' : '준비하기'}
+                    </button>
+                  )}
                 </div>
-              );
-            })
-          )}
-        </div>
 
-        <form onSubmit={send} className="flex gap-2 border-t border-white/10 p-3">
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="메시지를 입력하세요"
-            maxLength={500}
-            className="flex-1 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder-gray-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/40"
-          />
-          <button
-            type="submit"
-            disabled={!text.trim()}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-          >
-            전송
-          </button>
-        </form>
-        </section>
-      </div>
-        </>
+                <ul className="grid gap-4 sm:grid-cols-2">
+                  {members.map((m) => {
+                    const ready = readyMap[m.userId] ?? false;
+                    const isMe = m.userId === myUserId;
+                    return (
+                      <li
+                        key={m.userId}
+                        className={`flex items-center justify-between rounded-2xl border p-4.5 transition-all ${
+                          isMe
+                            ? 'bg-rose-50/70 border-rose-200/60 shadow-sm'
+                            : 'bg-white/60 border-white/60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`flex h-10 w-10 items-center justify-center rounded-xl font-bold ${
+                            m.isHost 
+                              ? 'bg-amber-100 text-amber-700' 
+                              : isMe 
+                                ? 'bg-rose-100 text-rose-700' 
+                                : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {m.nickname.charAt(0)}
+                          </div>
+                          <div>
+                            <span className="font-bold text-gray-800">
+                              {m.nickname}
+                            </span>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {isMe && (
+                                <span className="rounded-full bg-rose-100 px-1.5 py-0.2 text-[10px] font-bold text-rose-700">
+                                  나
+                                </span>
+                              )}
+                              {m.isHost ? (
+                                <span className="rounded-full bg-amber-100 px-1.5 py-0.2 text-[10px] font-bold text-amber-700">
+                                  방장
+                                </span>
+                              ) : ready ? (
+                                <span className="rounded-full bg-emerald-100 px-1.5 py-0.2 text-[10px] font-bold text-emerald-700">
+                                  준비 완료
+                                </span>
+                              ) : (
+                                <span className="rounded-full bg-gray-100 px-1.5 py-0.2 text-[10px] font-bold text-gray-500">
+                                  대기 중
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {iAmHost && !m.isHost && (
+                          <button
+                            onClick={() => kick(m.userId)}
+                            className="rounded-xl border border-rose-200 bg-rose-50/50 px-2.5 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-500 hover:text-white"
+                          >
+                            강퇴
+                          </button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+
+              <div className="mt-8 flex items-center justify-between border-t border-white/50 pt-5">
+                <span className="text-xs font-semibold text-gray-400">
+                  최소 3명 가입 시 게임 진행 가능
+                </span>
+                {iAmHost && (
+                  <span className="text-xs font-bold text-amber-600 flex items-center gap-1">
+                    당신이 이 방의 방장입니다.
+                  </span>
+                )}
+              </div>
+            </section>
+          </div>
+
+          {/* 우측: 공개 모드 설정 및 채팅창 */}
+          <div className="flex flex-col gap-6 lg:col-span-5">
+            {/* 공개 모드 선택 */}
+            <section className="rounded-3xl glass-card p-6 flex flex-col">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                    공개 모드 설정
+                  </h2>
+                  <p className="text-sm font-bold text-gray-700 mt-0.5">
+                    {iAmHost ? '게임 공개 방식을 선택하세요' : '방장이 설정한 게임 모드'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {MODE_OPTIONS.map((opt) => {
+                  const active = selectedMode === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => changeMode(opt.value)}
+                      disabled={!iAmHost}
+                      className={`flex flex-col gap-2 rounded-2xl border p-4 text-left transition-all ${
+                        active
+                          ? 'border-rose-400 bg-rose-50/50 ring-2 ring-rose-200/50'
+                          : 'border-white/50 bg-white/30'
+                      } ${
+                        iAmHost
+                          ? 'cursor-pointer hover:border-rose-300 hover:bg-white/40'
+                          : 'cursor-default opacity-90'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-extrabold text-gray-800">{opt.label}</span>
+                        {active && (
+                          <span className="h-2 w-2 rounded-full bg-rose-500" />
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 leading-normal">{opt.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* 채팅방 (반투명 다크 글래스 패널) */}
+            {chatPanel}
+          </div>
+        </div>
       )}
     </main>
   );
 }
+
