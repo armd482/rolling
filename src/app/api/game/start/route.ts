@@ -50,6 +50,8 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+
+  // 시작할 때마다 전체 풀에서 독립적으로 새로 셔플한다(직전 게임 참조 없음).
   const picked = pickTopics(members.length, topicIds);
   const rows = members.map((m, i) => ({
     room_id: id,
