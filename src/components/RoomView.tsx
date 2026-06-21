@@ -39,6 +39,9 @@ const MODE_OPTIONS: { value: RoomMode; label: string; desc: string }[] = [
   },
 ];
 
+// 채팅 입력창 최대 높이(px). 약 3줄까지 늘어난 뒤 스크롤(구글 미트 채팅 방식).
+const CHAT_MAX_H = 80;
+
 // 답변 제한시간 프리셋(초). null = 없음(무제한). 그 외 임의 값은 '기타'.
 const TIME_PRESETS: { value: number | null; label: string }[] = [
   { value: null, label: '없음' },
@@ -270,7 +273,10 @@ export default function RoomView({
     const content = text.trim();
     if (!content || !channelRef.current) return;
     setText('');
-    if (chatInputRef.current) chatInputRef.current.style.height = 'auto';
+    if (chatInputRef.current) {
+      chatInputRef.current.style.height = 'auto';
+      chatInputRef.current.style.overflowY = 'hidden';
+    }
     channelRef.current.send({
       type: 'broadcast',
       event: 'chat',
@@ -552,9 +558,12 @@ export default function RoomView({
           value={text}
           onChange={(e) => {
             setText(e.target.value);
-            // 내용에 맞춰 높이 자동 조절(최대 5줄 정도)
-            e.target.style.height = 'auto';
-            e.target.style.height = `${Math.min(e.target.scrollHeight, 96)}px`;
+            // 구글 미트 채팅처럼: 내용에 맞춰 약 3줄까지 위로 늘어나고, 그 뒤부터 스크롤.
+            // 상한 미만이면 overflow 를 hidden 으로 둬 한 줄에서 스크롤바가 뜨지 않게 한다.
+            const ta = e.target;
+            ta.style.height = 'auto';
+            ta.style.height = `${Math.min(ta.scrollHeight, CHAT_MAX_H)}px`;
+            ta.style.overflowY = ta.scrollHeight > CHAT_MAX_H ? 'auto' : 'hidden';
           }}
           onKeyDown={(e) => {
             // Enter = 전송, Shift+Enter = 줄바꿈
@@ -566,7 +575,7 @@ export default function RoomView({
           rows={1}
           placeholder="메시지를 입력하세요"
           maxLength={500}
-          className="max-h-24 min-h-[40px] flex-1 resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs leading-relaxed text-white placeholder-gray-400 outline-none transition focus:border-rose-400 focus:bg-white/10 focus:ring-2 focus:ring-rose-400/20"
+          className="max-h-20 min-h-[40px] flex-1 resize-none overflow-y-hidden rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs leading-relaxed text-white placeholder-gray-400 outline-none transition focus:border-rose-400 focus:bg-white/10 focus:ring-2 focus:ring-rose-400/20 [scrollbar-color:rgba(255,255,255,0.25)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/25 [&::-webkit-scrollbar-track]:bg-transparent"
         />
         <button
           type="submit"
