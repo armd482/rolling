@@ -12,11 +12,24 @@ function fmt(sec: number) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-// Fisher-Yates 셔플(원본 불변)
-function shuffle<T>(arr: T[]): T[] {
+// 시드 기반 Fisher-Yates 셔플(원본 불변).
+// Math.random 대신 시드(작성자+배정ID) 기반 PRNG 를 써서 SSR 과 클라이언트가 동일한 순서를 만든다.
+// → 작성 단계에서 새로고침해도 하이드레이션 불일치가 생기지 않는다(순서 랜덤성은 작성자/게임별로 유지).
+function seededShuffle<T>(arr: T[], seed: string): T[] {
+  let h = 1779033703 ^ seed.length;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  let s = (h ^ (h >>> 16)) >>> 0;
+  const rand = () => {
+    s = Math.imul(s ^ (s >>> 15), 1 | s);
+    s = (s + Math.imul(s ^ (s >>> 7), 61 | s)) ^ s;
+    return ((s ^ (s >>> 14)) >>> 0) / 4294967296;
+  };
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rand() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -43,8 +56,11 @@ export default function WritingView({
 }) {
   const myTargets = useMemo(() => targets.filter((t) => t.userId !== myUserId), [targets, myUserId]);
 
-  // 질문 순서는 작성자마다 무작위(컴포넌트 생애 동안 고정)
-  const [order] = useState(() => shuffle(myTargets));
+  // 질문 순서는 작성자마다 무작위(컴포넌트 생애 동안 고정).
+  // 시드(작성자 id + 배정 id들)로 셔플해 SSR/클라이언트가 같은 순서를 내도록 한다(하이드레이션 안전).
+  const [order] = useState(() =>
+    seededShuffle(myTargets, myUserId + '|' + myTargets.map((t) => t.assignmentId).join(',')),
+  );
   const [idx, setIdx] = useState(0);
 
   const [drafts, setDrafts] = useState<Record<string, string>>(() => {
