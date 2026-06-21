@@ -15,13 +15,6 @@ export type RoomOverview = {
 
 const MAX = 5;
 
-const STATE_LABEL: Record<RoomState, string> = {
-  lobby: '대기 중',
-  writing: '작성 중',
-  revealing: '공개 중',
-  finished: '종료',
-};
-
 export default function RoomList({
   overview,
   myNickname,

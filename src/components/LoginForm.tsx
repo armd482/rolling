@@ -46,10 +46,12 @@ export default function LoginForm({ suggestions }: { suggestions: Suggestion[] }
     );
   }, [query, suggestions]);
 
-  // 목록이 바뀌면 하이라이트 초기화
-  useEffect(() => {
+  // 목록(query)이 바뀌면 하이라이트 초기화 — 렌더 중 직접 동기화(effect 불필요)
+  const [prevQuery, setPrevQuery] = useState(query);
+  if (query !== prevQuery) {
+    setPrevQuery(query);
     setActive(-1);
-  }, [query]);
+  }
 
   // 선택 항목이 보이도록 스크롤
   useEffect(() => {

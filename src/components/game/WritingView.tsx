@@ -75,8 +75,6 @@ export default function WritingView({
   const [qDeadline, setQDeadline] = useState(() => Date.now() + QUESTION_SECONDS * 1000);
   const firedRef = useRef(false);
   const autoFiredRef = useRef<string | null>(null);
-  // 열람 화면(전부 제출) 진입 시 첫 카드로 한 번만 되돌리기 위한 가드
-  const reviewResetRef = useRef(false);
 
   const current = order[idx];
   const locked = current ? submitted.has(current.assignmentId) : false;
@@ -136,14 +134,14 @@ export default function WritingView({
     }
   }, [overallExpired, onTimeUp]);
 
-  // 내 몫을 모두 제출해 열람 화면으로 바뀌면, 마지막 카드가 아니라 첫 카드부터 보이도록 한 번만 idx 를 0 으로.
-  useEffect(() => {
-    if (reviewResetRef.current) return;
-    if (order.length > 0 && order.every((t) => submitted.has(t.assignmentId))) {
-      reviewResetRef.current = true;
-      setIdx(0);
-    }
-  }, [order, submitted]);
+  // 내 몫을 모두 제출해 열람 화면으로 바뀌면, 마지막 카드가 아니라 첫 카드부터 보이도록 전환 시 idx 를 0 으로.
+  // 렌더 중 "이전값 비교"로 처리(effect/ref 불필요).
+  const reviewMode = order.length > 0 && order.every((t) => submitted.has(t.assignmentId));
+  const [prevReviewMode, setPrevReviewMode] = useState(reviewMode);
+  if (reviewMode !== prevReviewMode) {
+    setPrevReviewMode(reviewMode);
+    if (reviewMode) setIdx(0);
+  }
 
   if (!current) {
     return (

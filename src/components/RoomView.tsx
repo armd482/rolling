@@ -93,9 +93,11 @@ export default function RoomView({
   const myReady = readyMap[myUserId] ?? false;
   const gameInProgress = state === 'writing' || state === 'revealing';
 
-  // 하트비트 인터벌(고정 deps) 안에서 최신 방장/상태 값을 읽기 위한 ref
+  // 하트비트 인터벌(고정 deps) 안에서 최신 방장/상태 값을 읽기 위한 ref — 커밋 후 갱신
   const pruneRef = useRef({ iAmHost, state });
-  pruneRef.current = { iAmHost, state };
+  useEffect(() => {
+    pruneRef.current = { iAmHost, state };
+  });
 
   // 시작 가능 조건: 총 3명 이상이고, 방장 외 참가자 전원이 준비 완료
   const others = members.filter((m) => !m.isHost);
@@ -110,10 +112,12 @@ export default function RoomView({
         ? `아직 준비하지 않은 참가자가 있어요 · ${readyCount}/${others.length}명 준비 완료`
         : null;
 
-  // 서버 갱신으로 prop(mode)이 바뀌면 로컬 상태도 맞춤
-  useEffect(() => {
+  // 서버 갱신으로 prop(mode)이 바뀌면 로컬 상태도 맞춤 — 렌더 중 동기화(effect 불필요)
+  const [prevMode, setPrevMode] = useState(mode);
+  if (mode !== prevMode) {
+    setPrevMode(mode);
     setSelectedMode(mode);
-  }, [mode]);
+  }
 
   useEffect(() => {
     const supabase = createClient();
@@ -331,17 +335,16 @@ export default function RoomView({
 
   // 오버라이드는 "낙관적 목표 위치". 서버가 그 위치에 도달할 때까지 유지한다.
   // (디바운스 경계를 넘는 연타로 서버가 잠깐 중간 위치로 이동해도 표시가 튀지 않게)
+  // 서버가 낙관적 목표 위치에 도달하면 오버라이드 해제 — 렌더 중 정리(effect 불필요)
+  if (
+    revealOverride &&
+    currentTargetIdx === revealOverride.ti &&
+    revealPage === revealOverride.pg
+  ) {
+    setRevealOverride(null);
+  }
   const revealTi = revealOverride ? revealOverride.ti : currentTargetIdx;
   const revealPg = revealOverride ? revealOverride.pg : revealPage;
-  useEffect(() => {
-    if (
-      revealOverride &&
-      currentTargetIdx === revealOverride.ti &&
-      revealPage === revealOverride.pg
-    ) {
-      setRevealOverride(null);
-    }
-  }, [revealOverride, currentTargetIdx, revealPage]);
 
   // 디바운스된 최종 위치를 서버에 전송(절대 위치 또는 종료)
   function flushRevealSend() {
