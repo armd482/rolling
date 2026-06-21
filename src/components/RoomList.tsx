@@ -13,7 +13,7 @@ export type RoomOverview = {
   members: { userId: string; nickname: string; isHost: boolean }[];
 };
 
-const MAX = 5;
+const MAX = 7;
 
 export default function RoomList({
   overview,

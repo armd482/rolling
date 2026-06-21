@@ -750,7 +750,7 @@ export default function RoomView({
                       참가자 목록
                     </h2>
                     <p className="text-xl font-extrabold text-gray-800 mt-1">
-                      현재 대기 인원 ({members.length}/5)
+                      현재 대기 인원 ({members.length}/7)
                     </p>
                   </div>
 

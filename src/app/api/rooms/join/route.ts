@@ -3,7 +3,7 @@ import { getValidSession } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { pruneStaleMembers } from '@/lib/prune';
 
-const MAX_PER_ROOM = 5;
+const MAX_PER_ROOM = 7;
 
 export async function POST(req: Request) {
   const session = await getValidSession();
