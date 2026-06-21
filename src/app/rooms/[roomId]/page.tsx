@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getValidSession } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
-import type { RoomRow, RoomMemberRow, UserRow, AssignmentRow, MessageRow } from '@/types/db';
+import type { RoomRow, RoomMemberRow, UserRow, AssignmentWithTopic, MessageRow } from '@/types/db';
 import type { GameData, GameTarget, RevealMessage } from '@/types/game';
 import RoomView, { type Member } from '@/components/RoomView';
 import { effectiveHostId } from '@/lib/host';
@@ -52,11 +52,11 @@ export default async function RoomPage({
   if (room && state !== 'lobby') {
     const { data: assignments } = await supabase
       .from('assignments')
-      .select('*')
+      .select('*, topics(text)')
       .eq('room_id', roomId)
       .order('order_idx', { ascending: true });
 
-    const aRows = (assignments ?? []) as AssignmentRow[];
+    const aRows = (assignments ?? []) as AssignmentWithTopic[];
     const aids = aRows.map((a) => a.id);
 
     let mRows: MessageRow[] = [];
@@ -69,7 +69,7 @@ export default async function RoomPage({
       assignmentId: a.id,
       userId: a.target_user_id,
       nickname: userById.get(a.target_user_id)?.nickname ?? '?',
-      topic: a.topic,
+      topic: a.topics?.text ?? '',
       orderIdx: a.order_idx,
     }));
 

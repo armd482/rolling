@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getAdminSession } from '@/lib/admin-session';
 import { createClient } from '@/lib/supabase/server';
-import type { AssignmentRow, MessageRow, UserRow, RoomRow } from '@/types/db';
+import type { AssignmentWithTopic, MessageRow, UserRow, RoomRow } from '@/types/db';
 import AdminResetButton from '@/components/AdminResetButton';
 import AdminLogoutButton from '@/components/AdminLogoutButton';
 import AdminSaveImageButton from '@/components/AdminSaveImageButton';
@@ -18,7 +18,7 @@ export default async function AdminPage() {
     await Promise.all([
       supabase
         .from('assignments')
-        .select('*')
+        .select('*, topics(text)')
         .order('room_id', { ascending: true })
         .order('order_idx', { ascending: true }),
       supabase.from('messages').select('*').order('created_at', { ascending: true }),
@@ -40,12 +40,12 @@ export default async function AdminPage() {
 
   // 대상자(받는 사람) 기준으로 묶기 — 방/라운드와 무관하게 한 사람의 질문·답변을 한 그룹으로
   const byTarget = new Map<string, AdminTarget>();
-  for (const a of (assignments ?? []) as AssignmentRow[]) {
+  for (const a of (assignments ?? []) as AssignmentWithTopic[]) {
     const anonymous = modeByRoom.get(a.room_id) === 'anonymous';
     const entry = {
       assignmentId: a.id,
       roomId: a.room_id,
-      topic: a.topic,
+      topic: a.topics?.text ?? '',
       messages: (msgsByAssignment.get(a.id) ?? []).map((m) => ({
         writerNickname: userById.get(m.writer_user_id)?.nickname ?? '?',
         content: m.content,

@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { getValidSession } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { pickTopics, writingDeadline } from '@/lib/game';
-import { TOPICS } from '@/lib/topics';
 import { effectiveHostId } from '@/lib/host';
 
 export async function POST(req: Request) {
@@ -39,16 +38,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: '이미 시작된 방입니다.' }, { status: 409 });
   }
 
-  // 주제 풀은 DB(topics)에서 가져온다. 멤버 수만큼 무작위로 뽑아 멤버당 하나씩 배정.
-  // 테이블이 없거나 풀이 부족하면 기본 TOPICS 로 폴백(앱이 깨지지 않도록).
-  const { data: topicRows } = await supabase.from('topics').select('text');
-  const pool = (topicRows ?? []).map((r) => r.text as string).filter(Boolean);
-  const source = pool.length >= members.length ? pool : TOPICS;
-  const topics = pickTopics(members.length, source);
+  // 주제 풀은 DB(topics)에서만 가져온다. 멤버 수만큼 무작위로 뽑아 멤버당 하나씩(FK) 배정.
+  // 풀이 참가자 수보다 적으면 시작하지 않는다(폴백 없음).
+  const { data: topicRows } = await supabase.from('topics').select('id');
+  const topicIds = (topicRows ?? []).map((r) => r.id as number);
+  if (topicIds.length < members.length) {
+    return NextResponse.json(
+      {
+        error: `등록된 주제(${topicIds.length}개)가 참가자 수(${members.length}명)보다 적어 시작할 수 없습니다.`,
+      },
+      { status: 400 },
+    );
+  }
+  const picked = pickTopics(members.length, topicIds);
   const rows = members.map((m, i) => ({
     room_id: id,
     target_user_id: m.user_id,
-    topic: topics[i],
+    topic_id: picked[i],
     order_idx: i,
   }));
 

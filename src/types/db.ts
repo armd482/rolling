@@ -31,10 +31,14 @@ export type AssignmentRow = {
   id: string;
   room_id: number;
   target_user_id: string;
-  topic: string;
+  topic_id: number;
   order_idx: number;
   created_at: string;
 };
+
+// assignments 조회 시 topics 를 임베드(`select('*, topics(text)')`)한 행.
+// topic_id 가 topics(id) 를 참조하는 FK라 to-one 관계로 단일 객체가 따라온다.
+export type AssignmentWithTopic = AssignmentRow & { topics: { text: string } | null };
 
 export type MessageRow = {
   id: string;

@@ -1,5 +1,3 @@
-import { TOPICS } from './topics';
-
 // 주제당 제한 시간(초). 작성 단계 총 시간 = (작성할 주제 수) × 이 값.
 export const SECONDS_PER_TOPIC = 120;
 
@@ -10,9 +8,9 @@ export const SECONDS_PER_TOPIC = 120;
 // 누락되는 문제가 있었다. 순차 타이머가 항상 마감 안에 끝나도록 여유를 둔다.
 export const WRITING_GRACE_SECONDS = 30;
 
-// 중복 없이 n개의 주제를 무작위로 뽑는다.
-// source(주제 풀)를 넘기면 그 풀에서, 없으면 기본 TOPICS 에서 뽑는다.
-export function pickTopics(n: number, source: readonly string[] = TOPICS): string[] {
+// 주제 풀(source)에서 중복 없이 n개를 무작위로 뽑는다(Fisher–Yates).
+// 주제 텍스트든 id든 풀의 원소 타입 그대로 반환한다.
+export function pickTopics<T>(n: number, source: readonly T[]): T[] {
   const pool = [...source];
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
