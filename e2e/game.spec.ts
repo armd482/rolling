@@ -1,5 +1,5 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
-import { TEST_USERS, loginAndJoin, resetTestRoom } from './helpers';
+import { TEST_USERS, loginAndJoin, resetTestRoom, service } from './helpers';
 
 const ROOM = 7;
 
@@ -61,6 +61,69 @@ test('3명 입장→준비→시작→작성→공개 전체 흐름', async ({ b
     // 살아있는 클라이언트(타이머·heartbeat·Realtime)가 리셋을 되돌리지 못하도록
     // 컨텍스트를 모두 닫은 뒤 마지막에 방을 리셋한다.
     for (const c of ctxs) await c.close();
+    await resetTestRoom(ROOM);
+  }
+});
+
+// 주제 풀(topics)이 참가자 수보다 적으면 시작이 거부되고 alert 이 뜬다(폴백 없음).
+// ⚠ 이 테스트는 실 DB 의 topics 를 일시적으로 비웠다 복구하므로(파괴적) 기본 실행에서 제외한다.
+//   실행:  DESTRUCTIVE_DB=1 npx playwright test e2e/game.spec.ts -g "주제가 참가자 수보다"
+test('주제가 참가자 수보다 적으면 게임이 시작되지 않는다(alert)', async ({ browser }) => {
+  test.skip(!process.env.DESTRUCTIVE_DB, 'DESTRUCTIVE_DB=1 일 때만 실행 (topics 풀을 일시 변경)');
+  test.setTimeout(120_000);
+  await resetTestRoom(ROOM);
+
+  const sb = service();
+  const { data: backup } = await sb.from('topics').select('text');
+  const texts = (backup ?? []).map((t) => t.text as string);
+
+  try {
+    // 풀을 참가자(3)보다 적은 2개로 만든다. (assignments 전역 0건이라 FK 충돌 없음)
+    await sb.from('topics').delete().neq('id', -1);
+    await sb.from('topics').insert([{ text: '임시주제1' }, { text: '임시주제2' }]);
+
+    const ctxs: BrowserContext[] = [];
+    const pages: Page[] = [];
+    for (let i = 0; i < 3; i++) {
+      const ctx = await browser.newContext();
+      ctxs.push(ctx);
+      pages.push(await ctx.newPage());
+    }
+
+    try {
+      for (let i = 0; i < 3; i++) await loginAndJoin(pages[i], TEST_USERS[i].email, ROOM);
+      const [host, p2, p3] = pages;
+
+      await expect(host.getByText('현재 대기 인원 (3/5)')).toBeVisible({ timeout: 20000 });
+      await p2.getByRole('button', { name: '준비 상태 전환' }).click();
+      await p3.getByRole('button', { name: '준비 상태 전환' }).click();
+
+      const startBtn = host.getByRole('button', { name: '게임 시작하기' });
+      await expect(startBtn).toBeEnabled({ timeout: 20000 });
+
+      // 시작 클릭 → 서버 400 → window.alert. 다이얼로그 메시지를 캡처한다.
+      const dialogMsg = new Promise<string>((resolve) =>
+        host.once('dialog', async (d) => {
+          const m = d.message();
+          await d.accept();
+          resolve(m);
+        }),
+      );
+      await startBtn.click();
+      const msg = await dialogMsg;
+      expect(msg).toContain('시작할 수 없습니다');
+      expect(msg).toContain('주제');
+
+      // 작성 단계로 넘어가지 않고 여전히 로비(시작 버튼 그대로).
+      await expect(host.getByRole('button', { name: '게임 시작하기' })).toBeVisible();
+      await expect(host.getByText('이 질문 남은 시간')).toHaveCount(0);
+    } finally {
+      for (const c of ctxs) await c.close();
+    }
+  } finally {
+    // 주제 풀 원복 + 방 리셋.
+    await sb.from('topics').delete().neq('id', -1);
+    if (texts.length) await sb.from('topics').insert(texts.map((t) => ({ text: t })));
     await resetTestRoom(ROOM);
   }
 });

@@ -52,3 +52,4 @@ CLAUDE.md
 /playwright-report/
 /blob-report/
 /.playwright/
+/e2e/.auth/
