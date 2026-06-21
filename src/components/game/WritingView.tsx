@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameTarget } from '@/types/game';
 
 function fmt(sec: number) {
@@ -43,7 +43,6 @@ export default function WritingView({
   onWrite,
   onAllSubmitted,
   onTimeUp,
-  chat,
 }: {
   targets: GameTarget[];
   myMessages: Record<string, string>;
@@ -55,7 +54,6 @@ export default function WritingView({
   onWrite: (targetUserId: string, content: string) => void;
   onAllSubmitted: () => void; // 내 몫을 모두 제출했을 때 1회 호출
   onTimeUp: () => void;
-  chat?: ReactNode;
 }) {
   const myTargets = useMemo(() => targets.filter((t) => t.userId !== myUserId), [targets, myUserId]);
 
@@ -309,7 +307,6 @@ export default function WritingView({
             </div>
           </div>
           </div>
-          {chat && <div className="flex lg:w-80 lg:shrink-0">{chat}</div>}
         </div>
 
       </div>
@@ -403,7 +400,6 @@ export default function WritingView({
         </button>
           </div>
         </div>
-        {chat && <div className="flex lg:w-80 lg:shrink-0">{chat}</div>}
       </div>
     </div>
   );

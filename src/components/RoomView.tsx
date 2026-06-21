@@ -87,6 +87,9 @@ export default function RoomView({
   const [text, setText] = useState('');
   const [leaving, setLeaving] = useState(false);
   const [starting, setStarting] = useState(false);
+  // 게임 시작 진행 중(방장이 시작을 누른 순간 ~ 작성 화면 전환 전) 잠금.
+  // broadcast(self:true)로 전 참가자에 전파해, 이 구간엔 채팅을 제외한 모든 조작을 막는다.
+  const [locked, setLocked] = useState(false);
   // 준비 상태: Presence 로 동기화 (DB 미사용). userId -> ready
   const [readyMap, setReadyMap] = useState<Record<string, boolean>>({});
   // 작성 완료(broadcast 즉시 동기화). 서버 progress 왕복을 기다리지 않고 완료한 사람을 바로 반영.
@@ -164,6 +167,8 @@ export default function RoomView({
   if (state !== prevState) {
     setPrevState(state);
     if (state === 'writing') setRemoteDone(new Set());
+    setStarting(false); // 단계가 실제로 전환되면 시작 버튼 잠금 해제(다음 게임 대비)
+    setLocked(false); // 전환 완료 → 시작 진행 잠금 해제
   }
 
   // 서버 state 가 낙관적 단계에 도달하면 오버라이드 해제 — 렌더 중 동기화(effect 불필요)
@@ -235,6 +240,10 @@ export default function RoomView({
       // 단계 전환 (방장 → 전체) 즉시 동기화. 종료(finished)·다시 시작(lobby) 등을 서버 왕복 전에 표시.
       .on('broadcast', { event: 'phase' }, ({ payload }) => {
         setPhaseOverride((payload as { state: RoomState }).state);
+      })
+      // 시작 진행 중 잠금 (방장 → 전체). 채팅 외 모든 조작 비활성.
+      .on('broadcast', { event: 'lock' }, ({ payload }) => {
+        setLocked((payload as { locked: boolean }).locked);
       })
       // 작성 완료 (완료자 → 전체) 즉시 동기화. 서버 progress 재계산 왕복을 기다리지 않게 한다.
       .on('broadcast', { event: 'write-done' }, ({ payload }) => {
@@ -321,6 +330,7 @@ export default function RoomView({
   }
 
   function toggleReady() {
+    if (locked) return;
     const next = !myReady;
     myReadyRef.current = next;
     // 낙관적 업데이트 + 전체에 broadcast (self:true 라 본인에게도 되돌아옴, 동일값이라 무해)
@@ -333,7 +343,7 @@ export default function RoomView({
   }
 
   function changeMode(next: RoomMode) {
-    if (!iAmHost || next === selectedMode) return;
+    if (!iAmHost || locked || next === selectedMode) return;
     setSelectedMode(next); // 낙관적
     channelRef.current?.send({ type: 'broadcast', event: 'mode', payload: { mode: next } });
     // DB 영속(late-join 대비) — 실패해도 broadcast 로 즉시 반영은 됨
@@ -346,7 +356,7 @@ export default function RoomView({
 
   // 답변 제한시간 변경(초, null=없음). 모드와 동일하게 낙관적 + broadcast + DB 영속.
   function changeTimeLimit(next: number | null) {
-    if (!iAmHost || next === selectedSeconds) return;
+    if (!iAmHost || locked || next === selectedSeconds) return;
     setSelectedSeconds(next); // 낙관적
     channelRef.current?.send({
       type: 'broadcast',
@@ -360,9 +370,19 @@ export default function RoomView({
     });
   }
 
+  // 시작 잠금 해제(본인 + 전체 broadcast). 실패/취소 시 호출.
+  function unlock() {
+    setStarting(false);
+    setLocked(false);
+    channelRef.current?.send({ type: 'broadcast', event: 'lock', payload: { locked: false } });
+  }
+
   async function start() {
     if (!iAmHost || !allReady || starting) return;
     setStarting(true);
+    // 채팅 외 모든 조작을 즉시 잠그고(본인) 전 참가자에게도 전파.
+    setLocked(true);
+    channelRef.current?.send({ type: 'broadcast', event: 'lock', payload: { locked: true } });
     try {
       const res = await fetch('/api/game/start', {
         method: 'POST',
@@ -372,10 +392,13 @@ export default function RoomView({
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         window.alert(d.error ?? '시작에 실패했습니다.');
+        unlock(); // 실패 시에만 즉시 복구(전원)
       }
-      // 성공 시 rooms UPDATE 구독 → router.refresh → 작성 화면으로 전환
-    } finally {
-      setStarting(false);
+      // 성공 시 잠금 유지: rooms UPDATE → router.refresh 로 작성 화면이 실제로
+      // 뜰 때까지 잠가 둔다(아래 단계 전환 시점에 해제). 응답 직후 잠깐 풀리는 빈틈 방지.
+    } catch {
+      window.alert('시작에 실패했습니다.');
+      unlock();
     }
   }
 
@@ -530,6 +553,7 @@ export default function RoomView({
   }
 
   async function kick(targetUserId: string) {
+    if (locked) return;
     const res = await fetch('/api/rooms/kick', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -645,6 +669,17 @@ export default function RoomView({
     </section>
   );
 
+  // 단계별 본문 영역 클래스. 채팅은 통일 셸의 고정 위치에 한 번만 렌더(아래)해 remount(입력/포커스/높이 손실)를 막는다.
+  const gameView =
+    (effectiveState === 'writing' ||
+      effectiveState === 'revealing' ||
+      effectiveState === 'finished') &&
+    !!game;
+  const mainClass =
+    'flex min-h-0 min-w-0 flex-1 flex-col' +
+    (effectiveState === 'finished' ? ' gap-6' : '') +
+    (gameView ? '' : ' overflow-y-auto');
+
   return (
     <main className="relative mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-6 py-6 sm:px-8 lg:h-dvh lg:overflow-hidden lg:px-10">
       {/* 백그라운드 오로라 데코 — inset-0 + overflow-hidden 래퍼로 가둬 가로 스크롤 폭을 넓히지 않게 한다
@@ -667,33 +702,38 @@ export default function RoomView({
         <button
           onClick={leave}
           aria-label="방 나가기"
-          disabled={leaving || gameInProgress}
-          title={gameInProgress ? '게임 진행 중에는 나갈 수 없습니다.' : undefined}
+          disabled={leaving || gameInProgress || locked}
+          title={
+            gameInProgress
+              ? '게임 진행 중에는 나갈 수 없습니다.'
+              : locked
+                ? '게임을 시작하는 중입니다.'
+                : undefined
+          }
           className="rounded-2xl border border-rose-200/50 bg-rose-50/40 px-4 py-2 text-sm font-semibold text-rose-600 backdrop-blur-sm transition hover:bg-rose-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
           방 나가기
         </button>
       </header>
 
-      {effectiveState === 'writing' && game ? (
-        <div className="relative z-10 flex min-h-0 flex-1 flex-col">
-          <WritingView
-            targets={game.targets}
-            myMessages={game.myMessages}
-            myUserId={myUserId}
-            phaseEndsAt={phaseEndsAt}
-            secondsPerTopic={secondsPerTopic}
-            progress={game.progress}
-            doneUserIds={remoteDone}
-            onWrite={writeMessage}
-            onAllSubmitted={announceWriteDone}
-            onTimeUp={requestToReveal}
-            chat={chatPanel}
-          />
-        </div>
-      ) : effectiveState === 'revealing' && game ? (
-        <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {/* 본문 + 채팅 통일 셸: 채팅(2번째 칸)은 단계와 무관하게 항상 같은 트리 위치에서 한 번만
+          렌더된다 → 단계 전환 시 textarea 가 remount 되지 않아 입력 내용·포커스·높이가 유지된다. */}
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch">
+        <div className={mainClass}>
+          {effectiveState === 'writing' && game ? (
+            <WritingView
+              targets={game.targets}
+              myMessages={game.myMessages}
+              myUserId={myUserId}
+              phaseEndsAt={phaseEndsAt}
+              secondsPerTopic={secondsPerTopic}
+              progress={game.progress}
+              doneUserIds={remoteDone}
+              onWrite={writeMessage}
+              onAllSubmitted={announceWriteDone}
+              onTimeUp={requestToReveal}
+            />
+          ) : effectiveState === 'revealing' && game ? (
             <RevealView
               targets={game.targets}
               messagesByAssignment={game.messagesByAssignment}
@@ -703,13 +743,10 @@ export default function RoomView({
               onNav={revealNav}
               onJump={revealJump}
             />
-          </div>
-          <div className="flex lg:w-80 lg:shrink-0">{chatPanel}</div>
-        </div>
-      ) : effectiveState === 'finished' && game ? (
-        <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-6">
-          {/* 게임 종료 헤더 — 제목과 버튼을 한 줄에 두어 방장/일반 헤더 높이가 같도록 */}
-          <div className="shrink-0 border-b border-gray-200/50 pb-4">
+          ) : effectiveState === 'finished' && game ? (
+            <>
+              {/* 게임 종료 헤더 — 제목과 버튼을 한 줄에 */}
+              <div className="shrink-0 border-b border-gray-200/50 pb-4">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-2xl font-bold tracking-tight text-gray-900">게임 종료</h2>
               {iAmHost && (
@@ -725,21 +762,18 @@ export default function RoomView({
             <p className="mt-1 text-sm text-gray-500 font-semibold">
               소중한 동료들이 정성껏 남긴 전체 롤링페이퍼 결과를 확인해 보세요. (카드를 누르면 크게 볼 수 있어요)
             </p>
-          </div>
+              </div>
 
-          {/* 헤더 아래: 카드 영역 + 채팅 */}
-          <div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch">
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-              <FinishedView
-                targets={game.targets}
-                messagesByAssignment={game.messagesByAssignment}
-              />
-            </div>
-            <div className="flex lg:w-80 lg:shrink-0">{chatPanel}</div>
-          </div>
-        </div>
-      ) : (
-        <div className="relative z-10 grid min-h-0 flex-1 gap-8 overflow-y-auto lg:grid-cols-12">
+              {/* 헤더 아래: 결과 카드 영역 */}
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <FinishedView
+                  targets={game.targets}
+                  messagesByAssignment={game.messagesByAssignment}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="grid gap-8 lg:grid-cols-12">
           {/* 좌측: 참가자 현황 및 준비/시작 컨트롤 */}
           <div className="flex flex-col gap-6 lg:col-span-7">
             <section className="rounded-3xl glass-card p-6 flex-1 flex flex-col justify-between min-h-[400px]">
@@ -778,7 +812,9 @@ export default function RoomView({
                     <button
                       onClick={toggleReady}
                       aria-label="준비 상태 전환"
-                      className={`rounded-2xl px-6 py-3 text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                      disabled={locked}
+                      title={locked ? '게임을 시작하는 중입니다.' : undefined}
+                      className={`rounded-2xl px-6 py-3 text-sm font-bold text-white shadow-md transition-all hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 ${
                         myReady
                           ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-100'
                           : 'bg-blue-600 hover:bg-blue-700'
@@ -843,7 +879,9 @@ export default function RoomView({
                           <button
                             onClick={() => kick(m.userId)}
                             aria-label={`${m.nickname} 강퇴`}
-                            className="rounded-xl border border-rose-200 bg-rose-50/50 px-2.5 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-500 hover:text-white"
+                            disabled={locked}
+                            title={locked ? '게임을 시작하는 중입니다.' : undefined}
+                            className="rounded-xl border border-rose-200 bg-rose-50/50 px-2.5 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             강퇴
                           </button>
@@ -891,13 +929,13 @@ export default function RoomView({
                       type="button"
                       onClick={() => changeMode(opt.value)}
                       aria-label={`${opt.label} 선택`}
-                      disabled={!iAmHost}
+                      disabled={!iAmHost || locked}
                       className={`flex flex-col gap-2 rounded-2xl border p-4 text-left transition-all ${
                         active
                           ? 'border-rose-400 bg-rose-50/50 ring-2 ring-rose-200/50'
                           : 'border-white/50 bg-white/30'
                       } ${
-                        iAmHost
+                        iAmHost && !locked
                           ? 'cursor-pointer hover:border-rose-300 hover:bg-white/40'
                           : 'cursor-default opacity-90'
                       }`}
@@ -940,13 +978,13 @@ export default function RoomView({
                         changeTimeLimit(opt.value);
                       }}
                       aria-label={`제한시간 ${opt.label} 선택`}
-                      disabled={!iAmHost}
+                      disabled={!iAmHost || locked}
                       className={`rounded-2xl border px-3 py-3 text-sm font-extrabold transition-all ${
                         active
                           ? 'border-violet-400 bg-violet-50/60 text-violet-700 ring-2 ring-violet-200/50'
                           : 'border-white/50 bg-white/30 text-gray-700'
                       } ${
-                        iAmHost
+                        iAmHost && !locked
                           ? 'cursor-pointer hover:border-violet-300 hover:bg-white/40'
                           : 'cursor-default opacity-90'
                       }`}
@@ -969,13 +1007,13 @@ export default function RoomView({
                         setCustomOpen(true);
                       }}
                       aria-label="제한시간 기타(직접 입력) 선택"
-                      disabled={!iAmHost}
+                      disabled={!iAmHost || locked}
                       className={`rounded-2xl border px-3 py-3 text-sm font-extrabold transition-all ${
                         active
                           ? 'border-violet-400 bg-violet-50/60 text-violet-700 ring-2 ring-violet-200/50'
                           : 'border-white/50 bg-white/30 text-gray-700'
                       } ${
-                        iAmHost
+                        iAmHost && !locked
                           ? 'cursor-pointer hover:border-violet-300 hover:bg-white/40'
                           : 'cursor-default opacity-90'
                       }`}
@@ -996,6 +1034,7 @@ export default function RoomView({
                     value={customText}
                     aria-label="제한시간 직접 입력(분)"
                     autoFocus
+                    disabled={locked}
                     onChange={(e) => {
                       const v = e.target.value.replace(/[^0-9]/g, '');
                       setCustomText(v);
@@ -1016,11 +1055,12 @@ export default function RoomView({
               )}
             </section>
 
-            {/* 채팅방 (반투명 다크 글래스 패널) */}
-            {chatPanel}
           </div>
         </div>
-      )}
+          )}
+        </div>
+        <div className="flex lg:w-80 lg:shrink-0">{chatPanel}</div>
+      </div>
     </main>
   );
 }
