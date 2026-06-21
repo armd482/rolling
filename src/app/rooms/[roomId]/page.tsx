@@ -109,6 +109,7 @@ export default async function RoomPage({
       currentTargetIdx={room?.current_target_idx ?? 0}
       revealPage={room?.reveal_page ?? 0}
       phaseEndsAt={room?.phase_ends_at ?? null}
+      secondsPerTopic={room?.seconds_per_topic ?? null}
       myUserId={session.id}
       myNickname={session.nickname}
       members={memberList}

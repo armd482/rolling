@@ -1,5 +1,11 @@
-// 주제당 제한 시간(초). 작성 단계 총 시간 = (작성할 주제 수) × 이 값.
-export const SECONDS_PER_TOPIC = 120;
+// 주제당 기본 제한 시간(초). 방장이 따로 고르지 않은 방의 기본값(2분).
+export const DEFAULT_SECONDS_PER_TOPIC = 120;
+
+// 방장이 고를 수 있는 미리 정의된 제한시간(초). null = 없음(무제한). '기타'는 임의 초.
+export const TIME_LIMIT_PRESETS = [null, 120, 300] as const;
+// 허용 범위(기타 입력 검증용): 1~60분.
+export const MIN_SECONDS_PER_TOPIC = 60;
+export const MAX_SECONDS_PER_TOPIC = 3600;
 
 // 작성 단계 전체 마감(안전망)에 더하는 여유 시간(초).
 // 각 작성자의 "주제별 120초 타이머"는 서버 시작 시점이 아니라 WritingView 가 마운트된 뒤
@@ -20,9 +26,11 @@ export function pickTopics<T>(n: number, source: readonly T[]): T[] {
 }
 
 // 작성 단계 마감 시각 계산. 각 작성자는 (인원-1)개의 주제를 쓴다.
-export function writingDeadline(memberCount: number): string {
+// secondsPerTopic 이 null(없음/무제한)이면 마감을 두지 않는다(null 반환).
+export function writingDeadline(memberCount: number, secondsPerTopic: number | null): string | null {
+  if (secondsPerTopic === null) return null;
   const topicsPerWriter = Math.max(1, memberCount - 1);
-  const seconds = topicsPerWriter * SECONDS_PER_TOPIC + WRITING_GRACE_SECONDS;
+  const seconds = topicsPerWriter * secondsPerTopic + WRITING_GRACE_SECONDS;
   return new Date(Date.now() + seconds * 1000).toISOString();
 }
 

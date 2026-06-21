@@ -65,6 +65,62 @@ test('3명 입장→준비→시작→작성→공개 전체 흐름', async ({ b
   }
 });
 
+// 방장이 답변 제한시간 "없음"을 고르면 → 피어 화면에도 즉시 반영(broadcast),
+// 시작 후 작성 화면에 카운트다운/자동제출 없이 "답변 제한시간 없음" 으로 진행된다.
+test('답변 제한시간 "없음" 설정이 동기화되고 타이머 없이 작성된다', async ({ browser }) => {
+  test.setTimeout(150_000);
+  await resetTestRoom(ROOM);
+
+  const ctxs: BrowserContext[] = [];
+  const pages: Page[] = [];
+  for (let i = 0; i < 3; i++) {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    page.on('dialog', (d) => d.accept());
+    ctxs.push(ctx);
+    pages.push(page);
+  }
+
+  try {
+    for (let i = 0; i < 3; i++) await loginAndJoin(pages[i], TEST_USERS[i].email, ROOM);
+    const [host, p2, p3] = pages;
+    await expect(host.getByText('현재 대기 인원 (3/5)')).toBeVisible({ timeout: 20000 });
+
+    // 방장이 '없음' 선택 → 비방장 화면에도 "없음(무제한)" 으로 반영
+    await host.getByRole('button', { name: '제한시간 없음 선택' }).click();
+    await expect(p2.getByText(/없음\(무제한\)/)).toBeVisible({ timeout: 10000 });
+
+    // 준비 → 시작
+    await p2.getByRole('button', { name: '준비 상태 전환' }).click();
+    await p3.getByRole('button', { name: '준비 상태 전환' }).click();
+    const startBtn = host.getByRole('button', { name: '게임 시작하기' });
+    await expect(startBtn).toBeEnabled({ timeout: 20000 });
+    await startBtn.click();
+
+    // 작성 화면: 카운트다운 대신 "답변 제한시간 없음"
+    for (const p of pages) {
+      await expect(p.getByText('답변 제한시간 없음')).toBeVisible({ timeout: 20000 });
+      await expect(p.getByText('이 질문 남은 시간')).toHaveCount(0);
+    }
+
+    // 타이머가 없어도 전원 제출하면 공개 단계로 진행
+    for (let pi = 0; pi < pages.length; pi++) {
+      const p = pages[pi];
+      for (let q = 0; q < TEST_USERS.length - 1; q++) {
+        const input = p.getByLabel('답변 입력');
+        await expect(input).toBeVisible({ timeout: 10000 });
+        await input.fill(`E2E 무제한 p${pi}-q${q}`);
+        await p.getByRole('button', { name: '제출' }).click();
+        await p.waitForTimeout(400);
+      }
+    }
+    await expect(host.getByText('이번 주인공')).toBeVisible({ timeout: 30000 });
+  } finally {
+    for (const c of ctxs) await c.close();
+    await resetTestRoom(ROOM);
+  }
+});
+
 // 주제 풀(topics)이 참가자 수보다 적으면 시작이 거부되고 alert 이 뜬다(폴백 없음).
 // ⚠ 이 테스트는 실 DB 의 topics 를 일시적으로 비웠다 복구하므로(파괴적) 기본 실행에서 제외한다.
 //   실행:  DESTRUCTIVE_DB=1 npx playwright test e2e/game.spec.ts -g "주제가 참가자 수보다"

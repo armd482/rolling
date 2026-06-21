@@ -6,6 +6,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 import type { RoomState, RoomMode } from '@/types/db';
 import type { GameData } from '@/types/game';
+import { MIN_SECONDS_PER_TOPIC, MAX_SECONDS_PER_TOPIC } from '@/lib/game';
 import WritingView from '@/components/game/WritingView';
 import RevealView from '@/components/game/RevealView';
 import FinishedView from '@/components/game/FinishedView';
@@ -38,6 +39,21 @@ const MODE_OPTIONS: { value: RoomMode; label: string; desc: string }[] = [
   },
 ];
 
+// 답변 제한시간 프리셋(초). null = 없음(무제한). 그 외 임의 값은 '기타'.
+const TIME_PRESETS: { value: number | null; label: string }[] = [
+  { value: null, label: '없음' },
+  { value: 120, label: '2분' },
+  { value: 300, label: '5분' },
+];
+
+// 선택된 초 값을 사람이 읽는 라벨로(없음 / N분 / N분 M초).
+function timeLabel(seconds: number | null): string {
+  if (seconds === null) return '없음(무제한)';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s === 0 ? `${m}분` : `${m}분 ${s}초`;
+}
+
 export default function RoomView({
   roomId,
   state,
@@ -45,6 +61,7 @@ export default function RoomView({
   currentTargetIdx,
   revealPage,
   phaseEndsAt,
+  secondsPerTopic,
   myUserId,
   myNickname,
   members,
@@ -56,6 +73,7 @@ export default function RoomView({
   currentTargetIdx: number;
   revealPage: number;
   phaseEndsAt: string | null;
+  secondsPerTopic: number | null;
   myUserId: string;
   myNickname: string;
   members: Member[];
@@ -70,6 +88,11 @@ export default function RoomView({
   const [readyMap, setReadyMap] = useState<Record<string, boolean>>({});
   // 공개 모드: DB(rooms.mode) 영속 + broadcast 즉시 동기화
   const [selectedMode, setSelectedMode] = useState<RoomMode>(mode);
+  // 답변 제한시간(초, null=없음): DB(rooms.seconds_per_topic) 영속 + broadcast 즉시 동기화
+  const [selectedSeconds, setSelectedSeconds] = useState<number | null>(secondsPerTopic);
+  // '기타' 분 입력창 열림 여부 + 입력 텍스트(방장 로컬 UI 상태)
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customText, setCustomText] = useState('');
   // 공개 단계 페이지 위치를 낙관적으로 즉시 반영(서버 왕복 지연 체감 제거).
   // base = 오버라이드 당시의 서버 위치. 서버가 그 위치에서 움직이면(=base 와 달라지면) 오버라이드 폐기.
   const [revealOverride, setRevealOverride] = useState<{ ti: number; pg: number } | null>(null);
@@ -117,6 +140,13 @@ export default function RoomView({
   if (mode !== prevMode) {
     setPrevMode(mode);
     setSelectedMode(mode);
+  }
+
+  // 서버 갱신으로 prop(secondsPerTopic)이 바뀌면 로컬 상태도 맞춤
+  const [prevSeconds, setPrevSeconds] = useState(secondsPerTopic);
+  if (secondsPerTopic !== prevSeconds) {
+    setPrevSeconds(secondsPerTopic);
+    setSelectedSeconds(secondsPerTopic);
   }
 
   useEffect(() => {
@@ -172,6 +202,10 @@ export default function RoomView({
       // 공개 모드 변경 (방장 → 전체) 즉시 동기화
       .on('broadcast', { event: 'mode' }, ({ payload }) => {
         setSelectedMode((payload as { mode: RoomMode }).mode);
+      })
+      // 답변 제한시간 변경 (방장 → 전체) 즉시 동기화
+      .on('broadcast', { event: 'timelimit' }, ({ payload }) => {
+        setSelectedSeconds((payload as { secondsPerTopic: number | null }).secondsPerTopic);
       })
       // 강퇴 알림: 내가 대상이면 알림 후 방 목록으로
       .on('broadcast', { event: 'kick' }, ({ payload }) => {
@@ -270,6 +304,22 @@ export default function RoomView({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ roomId, mode: next }),
+    });
+  }
+
+  // 답변 제한시간 변경(초, null=없음). 모드와 동일하게 낙관적 + broadcast + DB 영속.
+  function changeTimeLimit(next: number | null) {
+    if (!iAmHost || next === selectedSeconds) return;
+    setSelectedSeconds(next); // 낙관적
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'timelimit',
+      payload: { secondsPerTopic: next },
+    });
+    fetch('/api/rooms/timelimit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomId, secondsPerTopic: next }),
     });
   }
 
@@ -567,6 +617,7 @@ export default function RoomView({
             myMessages={game.myMessages}
             myUserId={myUserId}
             phaseEndsAt={phaseEndsAt}
+            secondsPerTopic={secondsPerTopic}
             progress={game.progress}
             onWrite={writeMessage}
             onTimeUp={requestToReveal}
@@ -795,6 +846,107 @@ export default function RoomView({
                   );
                 })}
               </div>
+            </section>
+
+            {/* 답변 제한시간 설정 */}
+            <section className="rounded-3xl glass-card p-6 flex flex-col">
+              <div className="mb-4">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+                  답변 제한시간 설정
+                </h2>
+                <p className="text-sm font-bold text-gray-700 mt-0.5">
+                  {iAmHost
+                    ? '질문(답변) 1개당 제한시간을 선택하세요'
+                    : `방장이 설정한 제한시간 · ${timeLabel(selectedSeconds)}`}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {TIME_PRESETS.map((opt) => {
+                  const active = !customOpen && selectedSeconds === opt.value;
+                  return (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      onClick={() => {
+                        setCustomOpen(false);
+                        changeTimeLimit(opt.value);
+                      }}
+                      aria-label={`제한시간 ${opt.label} 선택`}
+                      disabled={!iAmHost}
+                      className={`rounded-2xl border px-3 py-3 text-sm font-extrabold transition-all ${
+                        active
+                          ? 'border-violet-400 bg-violet-50/60 text-violet-700 ring-2 ring-violet-200/50'
+                          : 'border-white/50 bg-white/30 text-gray-700'
+                      } ${
+                        iAmHost
+                          ? 'cursor-pointer hover:border-violet-300 hover:bg-white/40'
+                          : 'cursor-default opacity-90'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+                {/* 기타 */}
+                {(() => {
+                  const isCustom =
+                    selectedSeconds !== null &&
+                    !TIME_PRESETS.some((p) => p.value === selectedSeconds);
+                  const active = customOpen || isCustom;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomText(isCustom ? String(Math.round(selectedSeconds! / 60)) : '');
+                        setCustomOpen(true);
+                      }}
+                      aria-label="제한시간 기타(직접 입력) 선택"
+                      disabled={!iAmHost}
+                      className={`rounded-2xl border px-3 py-3 text-sm font-extrabold transition-all ${
+                        active
+                          ? 'border-violet-400 bg-violet-50/60 text-violet-700 ring-2 ring-violet-200/50'
+                          : 'border-white/50 bg-white/30 text-gray-700'
+                      } ${
+                        iAmHost
+                          ? 'cursor-pointer hover:border-violet-300 hover:bg-white/40'
+                          : 'cursor-default opacity-90'
+                      }`}
+                    >
+                      기타
+                    </button>
+                  );
+                })()}
+              </div>
+
+              {customOpen && iAmHost && (
+                <div className="mt-3 flex items-center gap-2">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={60}
+                    value={customText}
+                    aria-label="제한시간 직접 입력(분)"
+                    autoFocus
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/[^0-9]/g, '');
+                      setCustomText(v);
+                      const sec = parseInt(v, 10) * 60;
+                      if (
+                        Number.isInteger(sec) &&
+                        sec >= MIN_SECONDS_PER_TOPIC &&
+                        sec <= MAX_SECONDS_PER_TOPIC
+                      ) {
+                        changeTimeLimit(sec);
+                      }
+                    }}
+                    placeholder="분 (1~60)"
+                    className="w-28 rounded-xl border border-gray-200 bg-white/70 px-3 py-2 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-200/50"
+                  />
+                  <span className="text-sm font-semibold text-gray-500">분</span>
+                </div>
+              )}
             </section>
 
             {/* 채팅방 (반투명 다크 글래스 패널) */}

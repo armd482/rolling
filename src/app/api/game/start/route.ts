@@ -31,7 +31,7 @@ export async function POST(req: Request) {
 
   const { data: room } = await supabase
     .from('rooms')
-    .select('state')
+    .select('state, seconds_per_topic')
     .eq('id', id)
     .maybeSingle();
   if (!room || room.state !== 'lobby') {
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
       state: 'writing',
       current_target_idx: 0,
       reveal_page: 0,
-      phase_ends_at: writingDeadline(members.length),
+      phase_ends_at: writingDeadline(members.length, room.seconds_per_topic),
     })
     .eq('id', id)
     .eq('state', 'lobby');

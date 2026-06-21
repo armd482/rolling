@@ -59,6 +59,7 @@ export async function resetTestRoom(roomId: number) {
       current_target_idx: 0,
       reveal_page: 0,
       phase_ends_at: null,
+      seconds_per_topic: 120,
     })
     .eq('id', roomId);
   // 조용히 묻히면 방이 비-lobby 로 남아 다음 테스트 입장을 막는다 → 실패를 드러낸다.

@@ -29,6 +29,7 @@ create table if not exists public.rooms (
   current_target_idx int not null default 0,   -- revealing 단계에서 공개 중인 대상 순번
   reveal_page        int not null default 0,   -- 현재 대상의 메시지 페이지
   phase_ends_at      timestamptz,              -- 현재 단계 공용 마감 시각(모두 같은 카운트다운)
+  seconds_per_topic  int default 120,          -- 답변(주제)당 제한 시간(초). NULL = 없음(무제한)
   updated_at         timestamptz not null default now()
 );
 

@@ -3,9 +3,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { GameTarget } from '@/types/game';
 
-// 질문 1개당 작성 시간(개별 관리). 제출하거나 시간이 끝나면 다음 질문으로 넘어간다.
-const QUESTION_SECONDS = 120;
-
 function fmt(sec: number) {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
@@ -40,6 +37,7 @@ export default function WritingView({
   myMessages,
   myUserId,
   phaseEndsAt,
+  secondsPerTopic,
   progress,
   onWrite,
   onTimeUp,
@@ -49,6 +47,7 @@ export default function WritingView({
   myMessages: Record<string, string>;
   myUserId: string;
   phaseEndsAt: string | null;
+  secondsPerTopic: number | null; // 질문당 제한시간(초). null = 없음(무제한)
   progress: { userId: string; nickname: string; done: boolean }[];
   onWrite: (targetUserId: string, content: string) => void;
   onTimeUp: () => void;
@@ -70,9 +69,13 @@ export default function WritingView({
   });
   // 제출 완료(=수정 잠금) 집합. 이미 서버에 저장된 항목은 잠금 상태로 시작한다.
   const [submitted, setSubmitted] = useState<Set<string>>(() => new Set(Object.keys(myMessages)));
+  // 제한시간 있음/없음. 없으면(null) 질문별 카운트다운·자동제출을 하지 않는다.
+  const limited = secondsPerTopic !== null;
   const [now, setNow] = useState(() => Date.now());
-  // 현재 질문의 개별 마감 시각. 질문이 바뀔 때(제출/시간초과)마다 새로 부여한다.
-  const [qDeadline, setQDeadline] = useState(() => Date.now() + QUESTION_SECONDS * 1000);
+  // 현재 질문의 개별 마감 시각. 질문이 바뀔 때(제출/시간초과)마다 새로 부여한다. 무제한이면 Infinity.
+  const [qDeadline, setQDeadline] = useState(() =>
+    limited ? Date.now() + secondsPerTopic * 1000 : Infinity,
+  );
   const firedRef = useRef(false);
   const autoFiredRef = useRef<string | null>(null);
 
@@ -121,11 +124,11 @@ export default function WritingView({
           return next;
         });
         setIdx((i) => Math.min(L.orderLen - 1, i + 1));
-        setQDeadline(Date.now() + QUESTION_SECONDS * 1000);
+        setQDeadline(secondsPerTopic !== null ? Date.now() + secondsPerTopic * 1000 : Infinity);
       }
     }, 1000);
     return () => clearInterval(t);
-  }, [onWrite]);
+  }, [onWrite, secondsPerTopic]);
 
   useEffect(() => {
     if (overallExpired && !firedRef.current) {
@@ -171,7 +174,7 @@ export default function WritingView({
     // 잠깐 2:0x 로 떴다가 2:00 으로 보정된다. now 와 마감을 같은 기준 시각으로 함께 갱신해 방지.
     const t = Date.now();
     setIdx((i) => Math.min(order.length - 1, i + 1));
-    setQDeadline(t + QUESTION_SECONDS * 1000);
+    setQDeadline(secondsPerTopic !== null ? t + secondsPerTopic * 1000 : Infinity);
     setNow(t);
   }
 
@@ -293,26 +296,39 @@ export default function WritingView({
   }
 
   const inputDisabled = locked || qExpired || overallExpired;
+  // 제한시간 라벨(예: "2분", "3분 30초"). 무제한이면 빈 문자열.
+  const qLimitLabel =
+    secondsPerTopic === null
+      ? ''
+      : secondsPerTopic % 60 === 0
+        ? `${secondsPerTopic / 60}분`
+        : `${Math.floor(secondsPerTopic / 60)}분 ${secondsPerTopic % 60}초`;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-6">
       {/* 1) 남은 시간 (상단) */}
       <div className="flex items-center justify-between rounded-3xl glass-card p-6">
         <div>
-          <h2 className="text-base font-bold text-gray-800">이 질문 남은 시간</h2>
+          <h2 className="text-base font-bold text-gray-800">
+            {limited ? '이 질문 남은 시간' : '답변 제한시간 없음'}
+          </h2>
           <p className="text-xs text-gray-400 font-semibold mt-1">
-            한 질문당 {Math.round(QUESTION_SECONDS / 60)}분 제한, 완료 시 다음 질문으로 자동 전환. (제출 {submittedCount}/{order.length})
+            {limited
+              ? `한 질문당 ${qLimitLabel} 제한, 완료 시 다음 질문으로 자동 전환. (제출 ${submittedCount}/${order.length})`
+              : `시간 제한 없이 작성하세요. 모두 제출하면 공개 단계로 넘어갑니다. (제출 ${submittedCount}/${order.length})`}
           </p>
         </div>
-        <div
-          className={`font-mono text-3xl font-extrabold tabular-nums px-4 py-2 rounded-2xl border ${
-            qUrgent
-              ? 'text-rose-600 bg-rose-50 border-rose-200 animate-pulse'
-              : 'text-violet-600 bg-violet-50/50 border-violet-100'
-          }`}
-        >
-          {fmt(qRemaining)}
-        </div>
+        {limited && (
+          <div
+            className={`font-mono text-3xl font-extrabold tabular-nums px-4 py-2 rounded-2xl border ${
+              qUrgent
+                ? 'text-rose-600 bg-rose-50 border-rose-200 animate-pulse'
+                : 'text-violet-600 bg-violet-50/50 border-violet-100'
+            }`}
+          >
+            {fmt(qRemaining)}
+          </div>
+        )}
       </div>
 
       {/* 2) 작성 완료 현황 (작성 카드 위) */}

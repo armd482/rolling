@@ -16,6 +16,7 @@ export type RoomRow = {
   current_target_idx: number;
   reveal_page: number;
   phase_ends_at: string | null;
+  seconds_per_topic: number | null; // 답변당 제한 시간(초). null = 없음(무제한)
   updated_at: string;
 };
 
