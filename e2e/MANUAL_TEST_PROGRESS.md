@@ -68,14 +68,17 @@
 
 ## 남은 테스트 (다음 세션에서 이어서)
 
-### ★ 긴 내용 레이아웃 (모든 참가자가 긴 답변 작성한 상태에서)
-> peers_runner.mjs 는 이미 긴 답변(약 400자+)을 제출하도록 갱신됨. host(시오)도 긴 답변 2개 작성 필요.
-> 직전엔 host Q2 작성 중 rate limit 으로 중단됨 → 여기부터 재개.
-- [ ] **작성 열람 페이지**(WritingView allSubmitted, "내가 남긴 메시지 카드"): 긴 답변에서 이전/다음 카드 이동 + 카드 내부 스크롤([WritingView.tsx:245](../src/components/game/WritingView.tsx) overflow-y-auto) 정상 표시
-- [ ] **공개(reveal) 카드**: 긴 답변이 [RevealView.tsx:120](../src/components/game/RevealView.tsx) `overflow-y-auto` 로 스크롤되는지 실사용 확인(스크롤바가 안 보여도 스크롤 가능해야 함)
-- [ ] **종료 결과 카드 + 모달**(FinishedView): 긴 답변 표시·스크롤, 모달 이전/다음 답변
-- [ ] **반응형**(mobile 375 / tablet 768)에서 긴 답변·긴 주제 깨짐 없는지
-- 참고: 긴 **주제**(70자+) 작성 화면 클리핑은 이미 수정·검증 완료(주제 폰트 축소 + 카드 overflow-y-auto).
+### 긴 내용 레이아웃 (모든 참가자 긴 답변 ~400자, 익명 모드)
+- ✅ **공개(reveal) 카드**: 긴 답변이 [RevealView.tsx:120](../src/components/game/RevealView.tsx) `overflow-y-auto`로 카드 내부 스크롤됨. 짧은 높이(560)에서도 카드·화살표 유지하며 스크롤 확인.
+- ✅ **종료 결과 카드 + 모달**(FinishedView): 결과 카드에 긴 주제·긴 답변 표시, 모달(To.·Q·답변·이전/다음·1/N·닫기) narrow에서도 정상.
+- [ ] **작성 열람 페이지**(WritingView allSubmitted "내가 남긴 메시지 카드"): 잠깐 보였으나 전원완료 시 즉시 reveal 로 전환되어 머무르기 어려움 → **피어 제출을 지연/보류**시켜 host만 완료 상태를 만들어 1회 더 점검 권장. (카드 내부 스크롤은 [WritingView.tsx:245](../src/components/game/WritingView.tsx) overflow-y-auto 존재)
+- 참고: 긴 **주제**(70자+) 작성 화면 클리핑은 수정·검증 완료(주제 폰트 축소 + 카드 overflow-y-auto).
+
+### 🐛→✅ [수정] narrow(좁은 폭/짧은 높이) 게임 화면 레이아웃 2건
+> 실제 뷰포트가 515×478 같이 좁을 때 발견. [RoomView.tsx](../src/components/RoomView.tsx) 수정.
+- **(1) 좌측 잘림**: 배경 데코(blur 원)가 `-left-20/-right-20`로 main 밖으로 삐져나가 main 가로 스크롤 폭을 키움(595>515) → 포커스 이동 시 `scrollLeft=80`으로 밀려 헤더("7번 방"→"방") 등 **왼쪽 80px 잘림**. → 데코를 `absolute inset-0 overflow-hidden` 래퍼로 가둬 해결(가로 오버플로 0).
+- **(2) 결과 카드 0높이**: main이 `h-dvh + overflow-hidden`(페이지 스크롤 없음)이라, 좁은 화면에서 카드+채팅(min-h-320) 세로 쌓기가 뷰포트 초과 → **결과 카드 영역이 높이 0으로 짓눌려 안 보임**. → main을 `min-h-dvh`(narrow=페이지 세로 스크롤) + `lg:h-dvh lg:overflow-hidden`(넓은 화면=기존 고정 앱셸)로 변경. 카드 영역 0→1392px, 페이지 스크롤로 전부 노출.
+- 검증: 515×478에서 좌측 잘림 없음(h1 left=24)·결과 카드/모달 정상 노출. 데스크톱(lg) 회귀 없음 — e2e 7/7 통과.
 
 ### 그 외 미검증 (위 "미검증/후속" 섹션과 동일)
 - A2 미등록 거부 · A4 active_sid 단일세션 · A5 로그아웃

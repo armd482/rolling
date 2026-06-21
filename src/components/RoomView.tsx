@@ -528,10 +528,13 @@ export default function RoomView({
   );
 
   return (
-    <main className="relative mx-auto flex h-dvh w-full max-w-6xl flex-col overflow-hidden px-6 py-6 sm:px-8 lg:px-10">
-      {/* 백그라운드 오로라 데코 */}
-      <div className="pointer-events-none absolute -top-20 -left-20 h-96 w-96 rounded-full bg-rose-100/40 blur-3xl" />
-      <div className="pointer-events-none absolute top-40 -right-20 h-96 w-96 rounded-full bg-violet-100/40 blur-3xl" />
+    <main className="relative mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-6 py-6 sm:px-8 lg:h-dvh lg:overflow-hidden lg:px-10">
+      {/* 백그라운드 오로라 데코 — inset-0 + overflow-hidden 래퍼로 가둬 가로 스크롤 폭을 넓히지 않게 한다
+          (narrow 화면에서 데코가 main 밖으로 삐져나가 좌측이 잘리던 문제 방지) */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -top-20 -left-20 h-96 w-96 rounded-full bg-rose-100/40 blur-3xl" />
+        <div className="absolute top-40 -right-20 h-96 w-96 rounded-full bg-violet-100/40 blur-3xl" />
+      </div>
 
       <header className="relative z-10 mb-8 flex shrink-0 items-center justify-between">
         <div className="flex items-center gap-4">
