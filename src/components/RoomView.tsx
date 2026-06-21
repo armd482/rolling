@@ -89,6 +89,8 @@ export default function RoomView({
   const [starting, setStarting] = useState(false);
   // 준비 상태: Presence 로 동기화 (DB 미사용). userId -> ready
   const [readyMap, setReadyMap] = useState<Record<string, boolean>>({});
+  // 작성 완료(broadcast 즉시 동기화). 서버 progress 왕복을 기다리지 않고 완료한 사람을 바로 반영.
+  const [remoteDone, setRemoteDone] = useState<Set<string>>(new Set());
   // 공개 모드: DB(rooms.mode) 영속 + broadcast 즉시 동기화
   const [selectedMode, setSelectedMode] = useState<RoomMode>(mode);
   // 답변 제한시간(초, null=없음): DB(rooms.seconds_per_topic) 영속 + broadcast 즉시 동기화
@@ -99,6 +101,9 @@ export default function RoomView({
   // 공개 단계 페이지 위치를 낙관적으로 즉시 반영(서버 왕복 지연 체감 제거).
   // base = 오버라이드 당시의 서버 위치. 서버가 그 위치에서 움직이면(=base 와 달라지면) 오버라이드 폐기.
   const [revealOverride, setRevealOverride] = useState<{ ti: number; pg: number } | null>(null);
+  // 단계 전환(finished/lobby 등)을 방장 조작 즉시 표시하는 낙관적 오버라이드(broadcast 공유).
+  // 서버 state 가 확정되면 아래 prevState 블록에서 해제한다.
+  const [phaseOverride, setPhaseOverride] = useState<RoomState | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
@@ -117,7 +122,9 @@ export default function RoomView({
   const me = members.find((m) => m.userId === myUserId);
   const iAmHost = me?.isHost ?? false;
   const myReady = readyMap[myUserId] ?? false;
-  const gameInProgress = state === 'writing' || state === 'revealing';
+  // 방장 조작(종료/다시 시작)을 서버 왕복 전에 즉시 표시하는 낙관적 단계. 서버 state 가 따라오면 해제.
+  const effectiveState = phaseOverride ?? state;
+  const gameInProgress = effectiveState === 'writing' || effectiveState === 'revealing';
 
   // 하트비트 인터벌(고정 deps) 안에서 최신 방장/상태 값을 읽기 위한 ref — 커밋 후 갱신
   const pruneRef = useRef({ iAmHost, state });
@@ -151,6 +158,16 @@ export default function RoomView({
     setPrevSeconds(secondsPerTopic);
     setSelectedSeconds(secondsPerTopic);
   }
+
+  // 새 작성 단계로 들어오면 직전 게임의 완료 broadcast 기록을 초기화 — 렌더 중 동기화
+  const [prevState, setPrevState] = useState(state);
+  if (state !== prevState) {
+    setPrevState(state);
+    if (state === 'writing') setRemoteDone(new Set());
+  }
+
+  // 서버 state 가 낙관적 단계에 도달하면 오버라이드 해제 — 렌더 중 동기화(effect 불필요)
+  if (phaseOverride && state === phaseOverride) setPhaseOverride(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -209,6 +226,20 @@ export default function RoomView({
       // 답변 제한시간 변경 (방장 → 전체) 즉시 동기화
       .on('broadcast', { event: 'timelimit' }, ({ payload }) => {
         setSelectedSeconds((payload as { secondsPerTopic: number | null }).secondsPerTopic);
+      })
+      // 공개 단계 위치 이동 (방장 → 전체) 즉시 동기화. DB 반영(router.refresh)을 기다리지 않게 낙관적 표시.
+      .on('broadcast', { event: 'reveal' }, ({ payload }) => {
+        const { ti, pg } = payload as { ti: number; pg: number };
+        setRevealOverride({ ti, pg });
+      })
+      // 단계 전환 (방장 → 전체) 즉시 동기화. 종료(finished)·다시 시작(lobby) 등을 서버 왕복 전에 표시.
+      .on('broadcast', { event: 'phase' }, ({ payload }) => {
+        setPhaseOverride((payload as { state: RoomState }).state);
+      })
+      // 작성 완료 (완료자 → 전체) 즉시 동기화. 서버 progress 재계산 왕복을 기다리지 않게 한다.
+      .on('broadcast', { event: 'write-done' }, ({ payload }) => {
+        const { userId } = payload as { userId: string };
+        setRemoteDone((prev) => (prev.has(userId) ? prev : new Set(prev).add(userId)));
       })
       // 강퇴 알림: 내가 대상이면 알림 후 방 목록으로
       .on('broadcast', { event: 'kick' }, ({ payload }) => {
@@ -360,6 +391,15 @@ export default function RoomView({
     [roomId],
   );
 
+  // 내가 내 몫을 모두 제출하면 전원에게 즉시 알림(broadcast). self:true 라 나도 받아 remoteDone 에 반영.
+  const announceWriteDone = useCallback(() => {
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'write-done',
+      payload: { userId: myUserId },
+    });
+  }, [myUserId]);
+
   // 작성 → 공개 전환 요청 (마감/전원완료 시). 서버가 조건 검증 후 1회만 적용.
   const toRevealSentRef = useRef(false);
   const requestToReveal = useCallback(() => {
@@ -411,7 +451,11 @@ export default function RoomView({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(pending === 'finish' ? { roomId, finish: true } : { roomId, ...pending }),
-    }).catch(() => setRevealOverride(null));
+    }).catch(() => {
+      // 실패 시 낙관적 표시를 되돌린다(위치·단계 모두).
+      setRevealOverride(null);
+      setPhaseOverride(null);
+    });
   }
 
   function revealNav(dir: 'next' | 'prev') {
@@ -446,8 +490,15 @@ export default function RoomView({
       }
     }
     if (!action) return;
-    // 종료는 카드를 더 넘기지 않고, 그 외엔 낙관적으로 즉시 이동 표시
-    if (action !== 'finish') setRevealOverride({ ti, pg });
+    // 종료는 카드를 더 넘기지 않고 최종 결과창으로 전환을 전원에게 즉시 broadcast,
+    // 그 외엔 낙관적으로 즉시 이동 표시 + 전원에게 위치 broadcast.
+    if (action === 'finish') {
+      setPhaseOverride('finished');
+      channelRef.current?.send({ type: 'broadcast', event: 'phase', payload: { state: 'finished' } });
+    } else {
+      setRevealOverride({ ti, pg });
+      channelRef.current?.send({ type: 'broadcast', event: 'reveal', payload: { ti, pg } });
+    }
     revealPendingRef.current = action;
     // 연타를 모아 최종 위치 하나만 전송(마지막 쓰기 승리 → 표시가 되돌아가지 않음)
     if (revealSendRef.current) clearTimeout(revealSendRef.current);
@@ -460,17 +511,22 @@ export default function RoomView({
     const ti = Math.max(0, Math.min(game.targets.length - 1, targetIdx));
     const pg = 0;
     setRevealOverride({ ti, pg });
+    channelRef.current?.send({ type: 'broadcast', event: 'reveal', payload: { ti, pg } });
     revealPendingRef.current = { targetIdx: ti, page: pg };
     if (revealSendRef.current) clearTimeout(revealSendRef.current);
     revealSendRef.current = setTimeout(flushRevealSend, 130);
   }
 
   function resetGame() {
+    // 대기실로 전환을 전원에게 즉시 broadcast(낙관적). 직전 게임의 공개 위치 오버라이드도 정리.
+    setRevealOverride(null);
+    setPhaseOverride('lobby');
+    channelRef.current?.send({ type: 'broadcast', event: 'phase', payload: { state: 'lobby' } });
     fetch('/api/game/reset', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ roomId }),
-    });
+    }).catch(() => setPhaseOverride(null));
   }
 
   async function kick(targetUserId: string) {
@@ -605,7 +661,7 @@ export default function RoomView({
           </h1>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold text-gray-600 border border-white/60 shadow-sm backdrop-blur-sm">
             <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
-            {STATE_LABEL[state]} · {mode === 'anonymous' ? '익명 모드' : '실명 모드'}
+            {STATE_LABEL[effectiveState]} · {selectedMode === 'anonymous' ? '익명 모드' : '실명 모드'}
           </span>
         </div>
         <button
@@ -619,7 +675,7 @@ export default function RoomView({
         </button>
       </header>
 
-      {state === 'writing' && game ? (
+      {effectiveState === 'writing' && game ? (
         <div className="relative z-10 flex min-h-0 flex-1 flex-col">
           <WritingView
             targets={game.targets}
@@ -628,12 +684,14 @@ export default function RoomView({
             phaseEndsAt={phaseEndsAt}
             secondsPerTopic={secondsPerTopic}
             progress={game.progress}
+            doneUserIds={remoteDone}
             onWrite={writeMessage}
+            onAllSubmitted={announceWriteDone}
             onTimeUp={requestToReveal}
             chat={chatPanel}
           />
         </div>
-      ) : state === 'revealing' && game ? (
+      ) : effectiveState === 'revealing' && game ? (
         <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <RevealView
@@ -648,7 +706,7 @@ export default function RoomView({
           </div>
           <div className="flex lg:w-80 lg:shrink-0">{chatPanel}</div>
         </div>
-      ) : state === 'finished' && game ? (
+      ) : effectiveState === 'finished' && game ? (
         <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-6">
           {/* 게임 종료 헤더 — 제목과 버튼을 한 줄에 두어 방장/일반 헤더 높이가 같도록 */}
           <div className="shrink-0 border-b border-gray-200/50 pb-4">

@@ -39,7 +39,9 @@ export default function WritingView({
   phaseEndsAt,
   secondsPerTopic,
   progress,
+  doneUserIds,
   onWrite,
+  onAllSubmitted,
   onTimeUp,
   chat,
 }: {
@@ -49,7 +51,9 @@ export default function WritingView({
   phaseEndsAt: string | null;
   secondsPerTopic: number | null; // 질문당 제한시간(초). null = 없음(무제한)
   progress: { userId: string; nickname: string; done: boolean }[];
+  doneUserIds: Set<string>; // broadcast 로 즉시 받은 "완료한 사람" 집합
   onWrite: (targetUserId: string, content: string) => void;
+  onAllSubmitted: () => void; // 내 몫을 모두 제출했을 때 1회 호출
   onTimeUp: () => void;
   chat?: ReactNode;
 }) {
@@ -146,6 +150,15 @@ export default function WritingView({
     if (reviewMode) setIdx(0);
   }
 
+  // 내 몫을 모두 제출하면 전원에게 완료를 1회 broadcast (남의 화면에서 내 칩이 즉시 '완료'로).
+  const doneFiredRef = useRef(false);
+  useEffect(() => {
+    if (reviewMode && !doneFiredRef.current) {
+      doneFiredRef.current = true;
+      onAllSubmitted();
+    }
+  }, [reviewMode, onAllSubmitted]);
+
   if (!current) {
     return (
       <div className="flex flex-1 items-center justify-center min-h-[300px] rounded-3xl glass-card">
@@ -157,6 +170,14 @@ export default function WritingView({
   const value = drafts[current.assignmentId] ?? '';
   const submittedCount = order.filter((t) => submitted.has(t.assignmentId)).length;
   const allSubmitted = order.every((t) => submitted.has(t.assignmentId));
+  // 완료 상태를 서버 왕복(write→INSERT→realtime→refresh) 없이 즉시 반영한다.
+  // - 내 것: 로컬 제출 상태(allSubmitted)
+  // - 남의 것: broadcast 로 받은 doneUserIds
+  // 서버 progress 는 fallback(누락분 재동기화). done 만 끌어올린다(false 로 되돌리지 않음).
+  const displayProgress = progress.map((p) => {
+    const done = p.done || doneUserIds.has(p.userId) || (p.userId === myUserId && allSubmitted);
+    return done === p.done ? p : { ...p, done };
+  });
 
   function submit() {
     if (locked) return;
@@ -190,7 +211,7 @@ export default function WritingView({
         </span>
       </div>
       <ul className="flex flex-wrap gap-2">
-        {progress.map((p) => (
+        {displayProgress.map((p) => (
           <li
             key={p.userId}
             className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold ${
