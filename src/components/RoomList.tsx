@@ -26,6 +26,7 @@ export default function RoomList({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [joiningId, setJoiningId] = useState<number | null>(null);
   const [error, setError] = useState('');
 
   // 방/참가자 변경을 실시간 구독 → 서버 컴포넌트 갱신
@@ -48,6 +49,7 @@ export default function RoomList({
   async function join(roomId: number) {
     setError('');
     setBusy(true);
+    setJoiningId(roomId);
     try {
       const res = await fetch('/api/rooms/join', {
         method: 'POST',
@@ -58,6 +60,7 @@ export default function RoomList({
       if (!res.ok) {
         setError(data.error ?? '입장 실패');
         setBusy(false);
+        setJoiningId(null);
         return;
       }
       // 성공 시 리다이렉트되므로 busy를 유지(버튼 깜빡임 방지)
@@ -65,6 +68,7 @@ export default function RoomList({
     } catch {
       setError('입장 실패');
       setBusy(false);
+      setJoiningId(null);
     }
   }
 
@@ -202,23 +206,41 @@ export default function RoomList({
                   <button
                     onClick={() => router.push(`/rooms/${room.id}`)}
                     aria-label={`${room.id}번 방으로 다시 입장`}
-                    className="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 active:bg-blue-800"
+                    disabled={busy}
+                    className="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-blue-600"
                   >
                     다시 입장하기
                   </button>
                 ) : (
-                  <button
-                    onClick={() => join(room.id)}
-                    aria-label={`${room.id}번 방 입장`}
-                    disabled={busy || full || inAnyRoom || inProgress}
-                    className={`w-full rounded-2xl py-3 text-sm font-bold text-white transition-all ${
-                      inProgress || full || inAnyRoom
-                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300/20'
-                        : 'bg-gray-900 hover:bg-gray-800 hover:scale-[1.01] active:scale-[0.99] shadow-md shadow-gray-200'
-                    }`}
-                  >
-                    {inAnyRoom ? '다른 방 참여 중' : inProgress ? '게임 진행 중' : full ? '정원 초과' : '입장하기'}
-                  </button>
+                  (() => {
+                    const isJoining = joiningId === room.id;
+                    const disabled = busy || full || inAnyRoom || inProgress;
+                    return (
+                      <button
+                        onClick={() => join(room.id)}
+                        aria-label={`${room.id}번 방 입장`}
+                        disabled={disabled}
+                        aria-busy={isJoining}
+                        className={`w-full rounded-2xl py-3 text-sm font-bold text-white transition-all ${
+                          isJoining
+                            ? 'bg-gray-900 opacity-80 cursor-wait'
+                            : disabled
+                              ? 'bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300/20'
+                              : 'bg-gray-900 hover:bg-gray-800 hover:scale-[1.01] active:scale-[0.99] shadow-md shadow-gray-200'
+                        }`}
+                      >
+                        {isJoining
+                          ? '입장 중…'
+                          : inAnyRoom
+                            ? '다른 방 참여 중'
+                            : inProgress
+                              ? '게임 진행 중'
+                              : full
+                                ? '정원 초과'
+                                : '입장하기'}
+                      </button>
+                    );
+                  })()
                 )}
               </div>
             </li>
